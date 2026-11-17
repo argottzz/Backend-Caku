@@ -44,7 +44,7 @@ export function errorHandler(
       });
     }
 
-    if (err.code === "23503") {
+    if (err.code === "23503" || err.code === "23001") {
       return res.status(409).json({
         success: false,
         message: "Data masih digunakan oleh data lain",

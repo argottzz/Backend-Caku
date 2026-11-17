@@ -14,3 +14,12 @@ export async function findAllCategories(): Promise<CategoryRecord[]> {
 
   return rows;
 }
+
+export async function categoryExists(id: number): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    "SELECT 1 FROM categories WHERE id_kategori = $1",
+    [id],
+  );
+
+  return (rowCount ?? 0) > 0;
+}
