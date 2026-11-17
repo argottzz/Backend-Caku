@@ -8,6 +8,12 @@ const { Pool, types } = pg;
 // tetap berupa string dan perhitungan uang dilakukan dalam satuan sen.
 types.setTypeParser(1082, (value) => value);
 
+if (!env.db.password) {
+  console.warn(
+    "DB_PASS belum diisi. Isi DB_PASS di .env jika PostgreSQL memakai autentikasi password.",
+  );
+}
+
 const pool = new Pool({
   host: env.db.host,
   port: env.db.port,
