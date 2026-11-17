@@ -1,0 +1,23 @@
+import { Router } from "express";
+import rateLimit from "express-rate-limit";
+import authController from "../controllers/auth.controller.ts";
+import { verifyToken } from "../middlewares/auth.middleware.ts";
+
+const router = Router();
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Terlalu banyak percobaan login, coba lagi nanti",
+  },
+});
+
+router.post("/register", authController.register);
+router.post("/login", loginLimiter, authController.login);
+router.get("/me", verifyToken, authController.me);
+
+export default router;
