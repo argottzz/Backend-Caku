@@ -50,6 +50,14 @@ export function sumCents(...values: number[]): number {
   return total;
 }
 
+/**
+ * Menormalkan nilai uang dari database/input menjadi string dua desimal.
+ * Contoh: "50000" -> "50000.00"
+ */
+export function formatMoney(value: string | number): string {
+  return formatCents(toCents(value));
+}
+
 export function multiplyCents(cents: number, ...factors: number[]): number {
   const result = factors.reduce(
     (accumulator, factor) => accumulator * factor,
