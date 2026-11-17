@@ -8,7 +8,7 @@ import {
   updateRentalStatus,
 } from "../services/rental.service.ts";
 import type { AuthenticatedRequest } from "../types/auth.ts";
-import { deleteUploadedFile, saveTransferProof } from "../utils/file.ts";
+import { deleteCloudinaryFile, saveTransferProof } from "../utils/file.ts";
 import { parseId } from "../utils/parseId.ts";
 import {
   createRentalSchema,
@@ -126,7 +126,7 @@ class RentalController {
       });
     } catch (error) {
       if (savedProof) {
-        await deleteUploadedFile(savedProof);
+        await deleteCloudinaryFile(savedProof);
       }
 
       next(error);
@@ -150,7 +150,7 @@ class RentalController {
       );
 
       if (buktiTransfer) {
-        await deleteUploadedFile(buktiTransfer);
+        await deleteCloudinaryFile(buktiTransfer);
       }
 
       return res.json({
