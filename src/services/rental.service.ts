@@ -233,21 +233,51 @@ function toDetail(
   };
 }
 
+export interface RentalSummaryFilters {
+  userId?: number;
+  startDate?: string;
+  endDate?: string;
+  status?: RentalStatus;
+  page: number;
+  limit: number;
+}
+
 export async function findRentals(
   requester: AuthUser,
   query: RentalQueryInput,
 ): Promise<RentalListResult> {
+  return findRentalSummaries({
+    userId: requester.role === "customer" ? requester.id : undefined,
+    status: query.status,
+    page: query.page,
+    limit: query.limit,
+  });
+}
+
+export async function findRentalSummaries(
+  filters: RentalSummaryFilters,
+): Promise<RentalListResult> {
   const values: unknown[] = [];
   const conditions: string[] = [];
 
-  if (requester.role === "customer") {
-    values.push(requester.id);
+  if (filters.userId) {
+    values.push(filters.userId);
     conditions.push(`r.id_user = $${values.length}`);
   }
 
-  if (query.status) {
-    values.push(query.status);
+  if (filters.status) {
+    values.push(filters.status);
     conditions.push(`r.status = $${values.length}::rental_status`);
+  }
+
+  if (filters.startDate) {
+    values.push(filters.startDate);
+    conditions.push(`r.tanggal_mulai >= $${values.length}`);
+  }
+
+  if (filters.endDate) {
+    values.push(filters.endDate);
+    conditions.push(`r.tanggal_mulai <= $${values.length}`);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -258,23 +288,23 @@ export async function findRentals(
   );
 
   const total = countResult.rows[0]?.total ?? 0;
-  const offset = (query.page - 1) * query.limit;
+  const offset = (filters.page - 1) * filters.limit;
 
   const { rows } = await pool.query<RentalListRow>(
     `${RENTAL_LIST_SELECT}
      ${where}
      ORDER BY r.created_at DESC, r.id_rental DESC
      LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
-    [...values, query.limit, offset],
+    [...values, filters.limit, offset],
   );
 
   return {
     rentals: rows.map(toSummary),
     pagination: {
-      page: query.page,
-      limit: query.limit,
+      page: filters.page,
+      limit: filters.limit,
       total,
-      totalPages: total === 0 ? 0 : Math.ceil(total / query.limit),
+      totalPages: total === 0 ? 0 : Math.ceil(total / filters.limit),
     },
   };
 }
