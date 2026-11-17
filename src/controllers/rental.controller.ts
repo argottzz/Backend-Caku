@@ -4,6 +4,7 @@ import {
   deleteRental,
   findRentals,
   getRentalForUser,
+  returnRental,
   updateRentalStatus,
 } from "../services/rental.service.ts";
 import type { AuthenticatedRequest } from "../types/auth.ts";
@@ -14,6 +15,7 @@ import {
   rentalQuerySchema,
   updateRentalStatusSchema,
 } from "../validations/rental.validation.ts";
+import { returnRentalSchema } from "../validations/return.validation.ts";
 
 class RentalController {
   findAll = async (req: Request, res: Response, next: NextFunction) => {
@@ -187,6 +189,42 @@ class RentalController {
       return res.json({
         success: true,
         message: `Status rental berhasil diubah menjadi ${rental.status}`,
+        data: rental,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  returnRental = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = parseId(req.params.id);
+
+      if (id === null) {
+        return res.status(400).json({
+          success: false,
+          message: "Id rental tidak valid",
+        });
+      }
+
+      const validation = returnRentalSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Data tidak valid",
+          error: validation.error.issues,
+        });
+      }
+
+      const rental = await returnRental(id, validation.data);
+
+      return res.json({
+        success: true,
+        message:
+          rental.kondisi_pengembalian === "Baik"
+            ? "Pengembalian berhasil diproses"
+            : "Pengembalian berhasil diproses, sesuaikan stok untuk barang rusak atau hilang",
         data: rental,
       });
     } catch (error) {

@@ -31,4 +31,11 @@ router.patch(
   rentalController.updateStatus,
 );
 
+router.post(
+  "/:id/return",
+  verifyToken,
+  requireRole("admin"),
+  rentalController.returnRental,
+);
+
 export default router;
