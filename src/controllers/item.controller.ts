@@ -7,7 +7,7 @@ import {
   findItems,
   updateItem,
 } from "../services/item.service.ts";
-import { deleteUploadedFile, saveItemImage } from "../utils/file.ts";
+import { deleteCloudinaryFile, saveItemImage } from "../utils/file.ts";
 import { parseId } from "../utils/parseId.ts";
 import {
   createItemSchema,
@@ -109,7 +109,7 @@ class ItemController {
       });
     } catch (error) {
       if (savedImage) {
-        await deleteUploadedFile(savedImage);
+        await deleteCloudinaryFile(savedImage);
       }
 
       next(error);
@@ -167,7 +167,7 @@ class ItemController {
 
       if (!updated) {
         if (savedImage) {
-          await deleteUploadedFile(savedImage);
+          await deleteCloudinaryFile(savedImage);
         }
 
         return res.status(404).json({
@@ -177,7 +177,7 @@ class ItemController {
       }
 
       if (savedImage && existing.image) {
-        await deleteUploadedFile(existing.image);
+        await deleteCloudinaryFile(existing.image);
       }
 
       return res.json({
@@ -187,7 +187,7 @@ class ItemController {
       });
     } catch (error) {
       if (savedImage) {
-        await deleteUploadedFile(savedImage);
+        await deleteCloudinaryFile(savedImage);
       }
 
       next(error);
@@ -217,7 +217,7 @@ class ItemController {
       await deleteItem(id);
 
       if (existing.image) {
-        await deleteUploadedFile(existing.image);
+        await deleteCloudinaryFile(existing.image);
       }
 
       return res.json({

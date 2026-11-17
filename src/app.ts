@@ -1,4 +1,3 @@
-import path from "node:path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -9,8 +8,6 @@ import routes from "./routes/index.ts";
 
 const app = express();
 
-const uploadsDir = path.resolve("uploads");
-
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -19,8 +16,6 @@ app.use(
 app.use(cors({ origin: env.corsOrigins }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-app.use("/uploads", express.static(uploadsDir));
 
 app.get("/api/health", (req, res) => {
   res.json({

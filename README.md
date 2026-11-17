@@ -7,8 +7,8 @@ Dibangun dengan **Node.js + Express 5 + TypeScript + PostgreSQL**.
 
 - Autentikasi JWT dengan dua role: `admin` dan `customer`
 - Kategori read-only
-- CRUD barang dengan upload gambar lokal
-- Pengajuan penyewaan dengan upload bukti transfer
+- CRUD barang dengan upload gambar ke Cloudinary
+- Pengajuan penyewaan dengan upload bukti transfer ke Cloudinary
 - Verifikasi dan perubahan status transaksi
 - Proses pengembalian dengan perhitungan denda
 - Laporan transaksi dan pendapatan
@@ -24,12 +24,12 @@ Dibangun dengan **Node.js + Express 5 + TypeScript + PostgreSQL**.
 | Driver | `pg` (`$1` placeholder, transaksi, `FOR UPDATE`) |
 | Validasi | Zod |
 | Auth | `jsonwebtoken` + `bcryptjs` |
-| Upload | Multer (penyimpanan lokal) |
+| Upload | Multer + Cloudinary (penyimpanan cloud) |
 
 ## Menjalankan
 
 1. Siapkan database PostgreSQL bernama `aplikasi_caku` menggunakan `database/schema.sql`.
-2. Salin `.env.example` menjadi `.env` lalu sesuaikan kredensial database dan `JWT_SECRET`.
+2. Salin `.env.example` menjadi `.env` lalu sesuaikan kredensial database, `JWT_SECRET`, dan `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET`.
 3. Jalankan:
 
 ```bash
@@ -64,13 +64,14 @@ src/
   app.ts                  Konfigurasi Express
   server.ts               Entry point
   config/env.ts           Konfigurasi environment
+  config/cloudinary.ts    Konfigurasi Cloudinary
   db/index.ts             Pool PostgreSQL + helper transaksi
   routes/                 Definisi route
   controllers/            Validasi request dan response
   services/               Query database dan aturan bisnis
   middlewares/            Auth, role, upload, error, 404
   validations/            Skema Zod
-  utils/                  Uang, tanggal, file, token, error
+  utils/                  Uang, tanggal, file/Cloudinary, token, error
   scripts/seed.ts         Seed data awal
 ```
 
