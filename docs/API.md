@@ -1,15 +1,27 @@
 # Dokumentasi API Caku
 
 Backend REST API untuk sistem penyewaan perlengkapan camping **Caku**.
-Dibangun dengan Node.js, Express 5, TypeScript, PostgreSQL, Zod, JWT, dan Multer.
+Dibangun dengan Node.js, Express 5, TypeScript, PostgreSQL, Zod, JWT, Multer, dan Cloudinary.
 
 - Base URL lokal: `http://localhost:8000`
 - Semua endpoint aplikasi berada di bawah `/api`
-- File unggahan disajikan dari `/uploads/...`
+- Gambar disimpan di Cloudinary; response berisi URL `https://res.cloudinary.com/...`
 
 ---
 
 ## 1. Menjalankan
+
+Isi `.env` (salin dari `.env.example`) termasuk:
+
+```
+DB_HOST=localhost
+DB_PASS=...
+JWT_SECRET=...
+
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+```
 
 ```bash
 npm install
@@ -125,9 +137,15 @@ Role:
 - Field bukti transfer: `bukti_transfer`.
 - Format: JPG, JPEG, PNG, WEBP.
 - Ukuran maksimal: 5 MB.
-- Nama file asli tidak dipakai; server menyimpan dengan UUID.
+- File disimpan ke **Cloudinary**, bukan ke disk server.
+- Nama file asli tidak dipakai; `public_id` Cloudinary berupa UUID
+  (`caku/items/<uuid>` atau `caku/bukti-transfer/<uuid>`).
 - Isi file divalidasi (magic bytes), bukan hanya ekstensi.
 - Bukti transfer **wajib** saat mengajukan rental.
+- Kolom `image` dan `bukti_transfer` menyimpan **URL Cloudinary lengkap**.
+  Field `image_url` dan `bukti_transfer_url` berisi URL yang sama.
+- Saat gambar diganti atau barang dihapus, aset Cloudinary lama ikut dihapus
+  setelah perubahan database berhasil. Jika database gagal, aset baru dibersihkan.
 
 ### 4.4 Siklus Status dan Stok
 
@@ -265,8 +283,8 @@ Response `200` + `pagination`. Setiap item berisi:
   "nama_kategori": "Tenda dan Shelter",
   "nama_item": "Tenda Dome 4P",
   "deskripsi": "Tenda kapasitas 4 orang",
-  "image": "/uploads/items/<uuid>.png",
-  "image_url": "http://localhost:8000/uploads/items/<uuid>.png",
+  "image": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/items/<uuid>.png",
+  "image_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/items/<uuid>.png",
   "stok": 5,
   "harga_sewa_harian": "50000.00",
   "denda_harian": "10000.00",
@@ -335,8 +353,8 @@ Response `200` + `pagination`. Ringkasan tiap rental:
   "tanggal_selesai": "2026-11-19",
   "tanggal_kembali_aktual": null,
   "durasi_hari": 3,
-  "bukti_transfer": "/uploads/bukti-transfer/<uuid>.png",
-  "bukti_transfer_url": "http://localhost:8000/uploads/bukti-transfer/<uuid>.png",
+  "bukti_transfer": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/bukti-transfer/<uuid>.png",
+  "bukti_transfer_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/bukti-transfer/<uuid>.png",
   "status": "pending",
   "kondisi_pengembalian": null,
   "catatan_pengembalian": null,

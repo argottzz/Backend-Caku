@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
+import cloudinary, { isCloudinaryConfigured } from "../config/cloudinary.ts";
 import { env } from "../config/env.ts";
 import { AppError } from "./app-error.ts";
-
-export const UPLOADS_ROOT = path.resolve("uploads");
-export const ITEM_IMAGE_DIR = path.join(UPLOADS_ROOT, "items");
-export const TRANSFER_PROOF_DIR = path.join(UPLOADS_ROOT, "bukti-transfer");
 
 const EXTENSION_BY_MIME = {
   "image/jpeg": ".jpg",
@@ -21,6 +16,9 @@ export const ALLOWED_IMAGE_MIME_TYPES = Object.keys(
 ) as AllowedImageMime[];
 
 export const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+
+export const ITEM_IMAGE_FOLDER = "caku/items";
+export const TRANSFER_PROOF_FOLDER = "caku/bukti-transfer";
 
 export function isAllowedImageMime(mime: string): mime is AllowedImageMime {
   return mime in EXTENSION_BY_MIME;
@@ -54,19 +52,18 @@ function matchesMagicBytes(buffer: Buffer, mime: AllowedImageMime): boolean {
   );
 }
 
-interface SaveImageOptions {
-  directory: string;
-  folder: string;
-}
-
 /**
- * Menyimpan gambar unggahan dengan nama acak dan memvalidasi isi file.
- * Mengembalikan path publik, mis. "/uploads/items/<uuid>.png".
+ * Mengunggah gambar ke Cloudinary dengan public_id berupa UUID.
+ * Nama file asli tidak pernah dipakai. Mengembalikan secure_url.
  */
-export async function saveImageFile(
+export async function uploadImageToCloudinary(
   file: Express.Multer.File,
-  options: SaveImageOptions,
+  folder: string,
 ): Promise<string> {
+  if (!isCloudinaryConfigured) {
+    throw new AppError("Konfigurasi Cloudinary belum lengkap", 500);
+  }
+
   if (!isAllowedImageMime(file.mimetype)) {
     throw new AppError("Tipe file gambar tidak didukung", 400);
   }
@@ -75,63 +72,80 @@ export async function saveImageFile(
     throw new AppError("Isi file tidak sesuai dengan tipe gambar", 400);
   }
 
-  const extension = EXTENSION_BY_MIME[file.mimetype];
-  const filename = `${randomUUID()}${extension}`;
+  const dataUri = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
 
-  await mkdir(options.directory, { recursive: true });
-  await writeFile(path.join(options.directory, filename), file.buffer);
+  const result = await cloudinary.uploader.upload(dataUri, {
+    folder,
+    public_id: randomUUID(),
+    resource_type: "image",
+    overwrite: false,
+  });
 
-  return `/uploads/${options.folder}/${filename}`;
+  return result.secure_url;
 }
 
 export function saveItemImage(file: Express.Multer.File): Promise<string> {
-  return saveImageFile(file, {
-    directory: ITEM_IMAGE_DIR,
-    folder: "items",
-  });
+  return uploadImageToCloudinary(file, ITEM_IMAGE_FOLDER);
 }
 
 export function saveTransferProof(file: Express.Multer.File): Promise<string> {
-  return saveImageFile(file, {
-    directory: TRANSFER_PROOF_DIR,
-    folder: "bukti-transfer",
-  });
+  return uploadImageToCloudinary(file, TRANSFER_PROOF_FOLDER);
+}
+
+function extractPublicId(value: string): string | null {
+  const cleanValue = value.split("?")[0]?.split("#")[0] ?? "";
+  const match = /^https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/(.+)$/.exec(
+    cleanValue,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return decodeURIComponent(
+    match[1].replace(/^v\d+\//, "").replace(/\.[A-Za-z0-9]+$/, ""),
+  );
 }
 
 /**
- * Menghapus file unggahan berdasarkan path publiknya.
- * Hanya file di dalam folder uploads yang boleh dihapus.
+ * Menghapus gambar Cloudinary berdasarkan URL atau public_id yang tersimpan.
+ * Nilai selain aset Cloudinary (mis. path lama "/uploads/...") diabaikan.
  */
-export async function deleteUploadedFile(
-  publicPath: string | null | undefined,
+export async function deleteCloudinaryFile(
+  storedValue: string | null | undefined,
 ): Promise<void> {
-  if (!publicPath?.startsWith("/uploads/")) {
+  if (!storedValue || !isCloudinaryConfigured) {
     return;
   }
 
-  const relativePath = publicPath.slice("/uploads/".length);
-  const absolutePath = path.resolve(UPLOADS_ROOT, relativePath);
-  const relativeToRoot = path.relative(UPLOADS_ROOT, absolutePath);
+  const publicId = extractPublicId(storedValue);
 
-  if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
+  if (!publicId) {
     return;
   }
 
   try {
-    await unlink(absolutePath);
+    await cloudinary.uploader.destroy(publicId, {
+      resource_type: "image",
+      invalidate: true,
+    });
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-
-    if (code !== "ENOENT") {
-      console.warn(`Gagal menghapus file ${publicPath}:`, error);
-    }
+    console.warn(`Gagal menghapus aset Cloudinary ${publicId}:`, error);
   }
 }
 
-export function buildFileUrl(publicPath: string | null): string | null {
-  if (!publicPath) {
+/**
+ * Mengembalikan URL siap pakai. Nilai absolut (Cloudinary) dikembalikan apa
+ * adanya, sedangkan path relatif lama tetap diprefiks APP_URL.
+ */
+export function buildFileUrl(storedValue: string | null): string | null {
+  if (!storedValue) {
     return null;
   }
 
-  return `${env.appUrl}${publicPath}`;
+  if (/^https?:\/\//i.test(storedValue)) {
+    return storedValue;
+  }
+
+  return `${env.appUrl}${storedValue}`;
 }
