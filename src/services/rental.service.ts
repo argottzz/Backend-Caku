@@ -19,6 +19,7 @@ import type {
   RentalQueryInput,
   UpdateRentalStatusInput,
 } from "../validations/rental.validation.ts";
+import type { ReturnRentalInput } from "../validations/return.validation.ts";
 
 interface RentalRow {
   id_rental: number;
@@ -92,6 +93,10 @@ export interface RentalSummary {
 
 export interface RentalDetail extends RentalSummary {
   items: RentalItemDetail[];
+}
+
+export interface ReturnRentalResult extends RentalDetail {
+  perlu_penyesuaian_stok: boolean;
 }
 
 export interface Pagination {
@@ -587,4 +592,94 @@ export async function deleteRental(
   }
 
   return rental.bukti_transfer;
+}
+
+/**
+ * Memproses pengembalian rental berstatus ongoing.
+ * Semua stok detail dikembalikan; kondisi pengembalian hanya bersifat catatan.
+ */
+export async function returnRental(
+  id: number,
+  input: ReturnRentalInput,
+): Promise<ReturnRentalResult> {
+  await withTransaction(async (client) => {
+    const rentalResult = await client.query<{
+      id_rental: number;
+      status: RentalStatus;
+      tanggal_mulai: string;
+    }>(
+      `SELECT id_rental, status, tanggal_mulai
+       FROM rentals
+       WHERE id_rental = $1
+       FOR UPDATE`,
+      [id],
+    );
+
+    const rental = rentalResult.rows[0];
+
+    if (!rental) {
+      throw new AppError("Rental tidak ditemukan", 404);
+    }
+
+    if (rental.status !== "ongoing") {
+      throw new AppError(
+        `Pengembalian hanya dapat diproses untuk rental berstatus ongoing (status saat ini ${rental.status})`,
+        409,
+      );
+    }
+
+    if (input.tanggal_kembali_aktual < rental.tanggal_mulai) {
+      throw new AppError(
+        "Tanggal kembali tidak boleh sebelum tanggal mulai",
+        400,
+      );
+    }
+
+    const detailResult = await client.query<{
+      id_items: number;
+      jumlah: number;
+    }>(
+      `SELECT id_items, jumlah
+       FROM rental_details
+       WHERE id_rental = $1
+       ORDER BY id_items`,
+      [id],
+    );
+
+    for (const detail of detailResult.rows) {
+      await client.query(
+        `UPDATE items
+         SET stok = stok + $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id_items = $2`,
+        [detail.jumlah, detail.id_items],
+      );
+    }
+
+    await client.query(
+      `UPDATE rentals
+       SET
+         status = 'completed'::rental_status,
+         tanggal_kembali_aktual = $1,
+         kondisi_pengembalian = $2::return_condition,
+         catatan_pengembalian = $3
+       WHERE id_rental = $4`,
+      [
+        input.tanggal_kembali_aktual,
+        input.kondisi_pengembalian,
+        input.catatan_pengembalian ?? null,
+        id,
+      ],
+    );
+  });
+
+  const rental = await findRentalById(id);
+
+  if (!rental) {
+    throw new Error("Gagal mengambil rental yang dikembalikan");
+  }
+
+  return {
+    ...rental,
+    perlu_penyesuaian_stok: input.kondisi_pengembalian !== "Baik",
+  };
 }
