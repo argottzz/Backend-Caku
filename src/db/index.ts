@@ -25,4 +25,26 @@ const pool = new Pool({
   connectionTimeoutMillis: 10_000,
 });
 
+/**
+ * Menjalankan beberapa query dalam satu transaksi.
+ * COMMIT jika berhasil, ROLLBACK jika terjadi error.
+ */
+export async function withTransaction<T>(
+  handler: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    const result = await handler(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export default pool;
