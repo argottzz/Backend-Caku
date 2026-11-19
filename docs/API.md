@@ -44,6 +44,10 @@ Akun seed (dapat diubah di `.env`):
 | admin    | `admin@caku.test`    | `AdminCaku123!`     |
 | customer | `customer@caku.test` | `CustomerCaku123!`  |
 
+Untuk database yang sudah berjalan, perubahan struktur terbaru diterapkan dengan
+`database/migrations/001_add_admin_application_columns.sql`. Migration bersifat
+idempotent dan tidak membuat tabel baru.
+
 ---
 
 ## 2. Format Response
@@ -109,8 +113,17 @@ Authorization: Bearer <token>
 
 Role:
 
-- `admin` — mengelola barang, memproses transaksi, memproses pengembalian, melihat laporan.
-- `customer` — mengajukan penyewaan, melihat transaksi miliknya, membatalkan pengajuan `pending`.
+- `admin` — mengelola barang, memproses transaksi, memproses pengembalian, melihat laporan, memeriksa pengajuan admin.
+- `customer` — mengajukan penyewaan, melihat transaksi miliknya, membatalkan pengajuan `pending`, mengajukan perubahan role menjadi admin.
+
+Role dan identitas pengguna selalu dibaca ulang dari tabel `users` pada setiap request.
+Klaim `role` di dalam JWT tidak dipakai untuk otorisasi, sehingga:
+
+- Perubahan role langsung berlaku pada token yang masih aktif.
+- Token lama yang masih berisi `role: customer` tidak dapat mengakses endpoint admin
+  setelah role di database berubah, dan sebaliknya token lama milik pengguna yang baru
+  disetujui langsung memperoleh akses admin.
+- Token milik pengguna yang sudah tidak ada di database ditolak dengan `401`.
 
 ---
 
@@ -188,11 +201,32 @@ total_bayar    = total_sewa + total_denda
 
 Harga dan denda disimpan sebagai snapshot di `rental_details`, sehingga perubahan harga barang tidak mengubah transaksi lama.
 
+### 4.7 Pengajuan Menjadi Admin
+
+Pengajuan disimpan pada tabel `users` (tanpa tabel terpisah). Satu pengguna hanya
+memiliki status pengajuan terbaru.
+
+```
+NULL ──ajukan──> pending ──approve──> approved (role admin)
+                    │
+                    └──reject──> rejected (role customer) ──ajukan ulang──> pending
+```
+
+- Hanya `customer` yang dapat mengajukan.
+- Pengajuan kedua saat status `pending` ditolak `409`.
+- Mengajukan ulang hanya boleh dari status `rejected`; tanggal pengajuan diperbarui
+  dan `admin_reviewed_at`, `admin_reviewed_by`, serta `admin_rejection_reason` dikosongkan.
+- Approve/reject berjalan dalam satu transaksi PostgreSQL dengan `SELECT ... FOR UPDATE`,
+  sehingga dua admin tidak dapat memproses pengajuan yang sama secara bersamaan.
+- Approve mengubah `role` menjadi `admin` sekaligus status menjadi `approved`.
+- Reject mempertahankan `role` `customer`, menyimpan status `rejected` dan alasan opsional.
+- Pengajuan yang sudah diproses tidak dapat diproses ulang (`409`).
+
 ---
 
 ## 5. Endpoint
 
-Ringkasan 16 endpoint:
+Ringkasan 22 endpoint:
 
 | No | Method | Endpoint | Akses |
 | -- | ------ | -------- | ----- |
@@ -212,6 +246,12 @@ Ringkasan 16 endpoint:
 | 14 | PATCH | `/api/rentals/:id/status` | Admin |
 | 15 | POST | `/api/rentals/:id/return` | Admin |
 | 16 | GET | `/api/reports/summary` | Admin |
+| 17 | POST | `/api/admin-applications` | Customer |
+| 18 | GET | `/api/admin-applications/me` | Auth |
+| 19 | GET | `/api/admin-applications` | Admin |
+| 20 | GET | `/api/admin-applications/:id` | Admin |
+| 21 | PATCH | `/api/admin-applications/:id/approve` | Admin |
+| 22 | PATCH | `/api/admin-applications/:id/reject` | Admin |
 
 ---
 
@@ -507,6 +547,112 @@ Definisi:
 
 ---
 
+### 5.17 POST `/api/admin-applications` (customer)
+
+Membuat pengajuan menjadi admin. Tidak menerima body; identitas diambil dari JWT.
+
+Digunakan untuk pengajuan pertama maupun pengajuan ulang setelah `rejected`.
+
+Response `201`:
+
+```json
+{
+  "success": true,
+  "message": "Pengajuan menjadi admin berhasil dibuat",
+  "data": {
+    "id_user": 3,
+    "nama": "Budi",
+    "email": "budi@example.com",
+    "role": "customer",
+    "admin_application_status": "pending",
+    "admin_application_date": "2026-11-19T10:00:00.000Z",
+    "admin_reviewed_at": null,
+    "admin_reviewed_by": null,
+    "admin_rejection_reason": null,
+    "admin_reviewer_nama": null
+  }
+}
+```
+
+Kemungkinan error:
+
+- `403` — role bukan `customer` (sudah admin).
+- `409` — pengajuan masih `pending`, atau pengajuan sudah `approved`.
+
+---
+
+### 5.18 GET `/api/admin-applications/me`
+
+Status pengajuan milik pengguna yang sedang login.
+
+Jika belum pernah mengajukan, response tetap `200` dengan
+`admin_application_status: null` dan pesan
+`"Anda belum pernah mengajukan menjadi admin"`.
+
+---
+
+### 5.19 GET `/api/admin-applications` (admin)
+
+Query:
+
+| Parameter | Keterangan |
+| --------- | ---------- |
+| `status` | `pending`, `approved`, atau `rejected` (opsional) |
+| `page` | Default 1 |
+| `limit` | Default 10, maksimal 100 |
+
+Response `200` berisi daftar pengajuan dan `pagination`. Hanya pengguna yang memiliki
+status pengajuan (tidak `NULL`) yang ditampilkan. `password_hash` tidak pernah dikirim.
+
+---
+
+### 5.20 GET `/api/admin-applications/:id` (admin)
+
+`:id` adalah `users.id_user` pemohon, bukan id tabel pengajuan.
+
+Response `200` berisi detail pengajuan. Pengguna tanpa pengajuan atau id tidak ada → `404`,
+id bukan angka → `400`.
+
+---
+
+### 5.21 PATCH `/api/admin-applications/:id/approve` (admin)
+
+Menyetujui pengajuan dalam satu transaksi PostgreSQL dengan row locking.
+
+Efek:
+
+- `users.role` → `admin`
+- `admin_application_status` → `approved`
+- `admin_reviewed_at` → waktu sekarang
+- `admin_reviewed_by` → id admin dari JWT
+- `admin_rejection_reason` → `NULL`
+
+Response `200` berisi data pengajuan terbaru dengan `admin_reviewer_nama` terisi.
+
+Error: `404` pengajuan tidak ada, `409` pengajuan sudah diproses / bukan `pending` /
+pemohon bukan `customer`.
+
+---
+
+### 5.22 PATCH `/api/admin-applications/:id/reject` (admin)
+
+Body JSON (opsional):
+
+```json
+{ "admin_rejection_reason": "Dokumen belum lengkap" }
+```
+
+Efek:
+
+- `role` tetap `customer`
+- `admin_application_status` → `rejected`
+- `admin_reviewed_at` dan `admin_reviewed_by` diisi
+- `admin_rejection_reason` disimpan bila dikirim, `NULL` bila tidak
+
+Alasan maksimal 1000 karakter. Error mengikuti aturan approve (`404` / `409`).
+
+---
+
 ## 6. Status Code
 
 | Kode | Kapan |
@@ -517,7 +663,7 @@ Definisi:
 | 401 | Token tidak ada / tidak valid / kadaluarsa |
 | 403 | Role tidak diizinkan / bukan pemilik |
 | 404 | Data tidak ditemukan |
-| 409 | Email duplikat, stok kurang, transisi status tidak sah, data masih dipakai |
+| 409 | Email duplikat, stok kurang, transisi status tidak sah, data masih dipakai, pengajuan masih/sudah diproses |
 | 500 | Kesalahan server |
 
 ---
@@ -531,3 +677,6 @@ Definisi:
 
 Koleksi menyimpan token dan id secara otomatis ke collection variable.
 Fixture gambar tersedia di `postman/fixtures/`.
+
+Folder **Pengajuan Admin** membuat akun pemohon baru, lalu menjalankan alur
+ajukan → tolak → ajukan ulang → setujui sehingga akun seed tidak berubah role.

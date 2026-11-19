@@ -12,6 +12,7 @@ Dibangun dengan **Node.js + Express 5 + TypeScript + PostgreSQL**.
 - Verifikasi dan perubahan status transaksi
 - Proses pengembalian dengan perhitungan denda
 - Laporan transaksi dan pendapatan
+- Pengajuan menjadi admin oleh customer dan pemeriksaan oleh admin (tanpa tabel baru)
 
 ## Teknologi
 
@@ -29,6 +30,7 @@ Dibangun dengan **Node.js + Express 5 + TypeScript + PostgreSQL**.
 ## Menjalankan
 
 1. Siapkan database PostgreSQL bernama `aplikasi_caku` menggunakan `database/schema.sql`.
+   Untuk database yang sudah ada, jalankan migration di `database/migrations/` secara berurutan.
 2. Salin `.env.example` menjadi `.env` lalu sesuaikan kredensial database, `JWT_SECRET`, dan `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET`.
 3. Jalankan:
 
@@ -57,7 +59,8 @@ Akun seed:
 ## Struktur
 
 ```
-database/schema.sql        DDL acuan
+database/schema.sql        DDL acuan (termasuk kolom pengajuan admin)
+database/migrations/       Migration inkremental, idempotent
 docs/API.md               Dokumentasi endpoint
 postman/                  Koleksi dan environment Postman
 src/
@@ -94,3 +97,16 @@ pending ──approve──> approved ──ongoing──> ongoing ──return�
 - Stok divalidasi saat pengajuan.
 - Stok dikurangi saat `approved`.
 - Stok dikembalikan saat `completed`.
+
+## Alur Pengajuan Admin
+
+```
+NULL ──ajukan──> pending ──approve──> approved (role admin)
+                    │
+                    └──reject──> rejected (role customer) ──ajukan ulang──> pending
+```
+
+- Disimpan pada kolom `admin_application_*` di tabel `users`; tidak ada tabel baru.
+- Persetujuan dan penolakan menggunakan transaksi PostgreSQL + row locking.
+- Role untuk otorisasi selalu dibaca dari database, bukan dari klaim JWT, sehingga
+  perubahan role langsung berlaku pada sesi yang masih aktif.
