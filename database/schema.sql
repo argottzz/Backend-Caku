@@ -28,7 +28,60 @@ CREATE TABLE users (
     email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role role_type DEFAULT 'customer' NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Status pengajuan menjadi admin. NULL berarti belum pernah mengajukan.
+    admin_application_status VARCHAR(20),
+    admin_application_date TIMESTAMP,
+    admin_reviewed_at TIMESTAMP,
+    admin_reviewed_by INTEGER,
+    admin_rejection_reason TEXT,
+
+    CONSTRAINT chk_users_admin_application_status
+        CHECK (
+            admin_application_status IS NULL
+            OR admin_application_status IN ('pending', 'approved', 'rejected')
+        ),
+
+    -- Menjaga konsistensi antara status pengajuan, data pemeriksaan, dan role.
+    CONSTRAINT chk_users_admin_application_data
+        CHECK (
+            (
+                admin_application_status IS NULL
+                AND admin_application_date IS NULL
+                AND admin_reviewed_at IS NULL
+                AND admin_reviewed_by IS NULL
+                AND admin_rejection_reason IS NULL
+            )
+            OR (
+                admin_application_status = 'pending'
+                AND admin_application_date IS NOT NULL
+                AND admin_reviewed_at IS NULL
+                AND admin_reviewed_by IS NULL
+                AND admin_rejection_reason IS NULL
+                AND role = 'customer'::role_type
+            )
+            OR (
+                admin_application_status = 'approved'
+                AND admin_application_date IS NOT NULL
+                AND admin_reviewed_at IS NOT NULL
+                AND admin_reviewed_by IS NOT NULL
+                AND role = 'admin'::role_type
+            )
+            OR (
+                admin_application_status = 'rejected'
+                AND admin_application_date IS NOT NULL
+                AND admin_reviewed_at IS NOT NULL
+                AND admin_reviewed_by IS NOT NULL
+                AND role = 'customer'::role_type
+            )
+        ),
+
+    CONSTRAINT fk_users_admin_reviewer
+        FOREIGN KEY (admin_reviewed_by)
+        REFERENCES users (id_user)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
 );
 
 CREATE TABLE categories (
@@ -121,6 +174,10 @@ CREATE TABLE rental_details (
 
 CREATE INDEX idx_items_kategori
 ON items (id_kategori);
+
+CREATE INDEX idx_users_admin_application_status
+ON users (admin_application_status)
+WHERE admin_application_status IS NOT NULL;
 
 CREATE INDEX idx_rentals_user
 ON rentals (id_user);
