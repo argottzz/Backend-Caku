@@ -222,6 +222,19 @@ NULL ──ajukan──> pending ──approve──> approved (role admin)
 - Reject mempertahankan `role` `customer`, menyimpan status `rejected` dan alasan opsional.
 - Pengajuan yang sudah diproses tidak dapat diproses ulang (`409`).
 
+### 4.8 Kepemilikan Aset Gambar
+
+- Hanya backend yang dapat mengunggah, mengganti, dan menghapus aset Cloudinary.
+- Client tidak pernah mengirim URL atau `public_id` untuk disimpan/dihapus; field `image`
+  pada body JSON diabaikan.
+- Nama aset dibuat server: `caku/items/<uuid>` dan `caku/bukti-transfer/<uuid>`.
+- Penggantian gambar item: unggah aset baru → simpan ke DB → hapus aset lama yang
+  tercatat pada baris item tersebut.
+- Penghapusan item: hapus baris → hapus aset yang tercatat pada baris tersebut.
+- Pembatalan rental: hanya pemilik dan status `pending`; aset bukti transfer diambil
+  dari baris rental, bukan dari request.
+- Otorisasi (role/pemilik) diperiksa sebelum aksi; percobaan tanpa hak tidak menghapus aset.
+
 ---
 
 ## 5. Endpoint
