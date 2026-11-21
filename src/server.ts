@@ -10,6 +10,6 @@ try {
   process.exit(1);
 }
 
-app.listen(env.port, () => {
-  console.log(`Server berjalan di ${env.appUrl}`);
+app.listen(env.port, "0.0.0.0", () => {
+  console.log(`Server berjalan pada port ${env.port}`);
 });
