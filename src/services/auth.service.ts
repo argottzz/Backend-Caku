@@ -13,6 +13,7 @@ interface UserRow {
   nama: string;
   email: string;
   role: UserRole;
+  profile_image: string | null;
 }
 
 interface UserWithPasswordRow extends UserRow {
@@ -30,6 +31,7 @@ function toAuthUser(row: UserRow): AuthUser {
     nama: row.nama,
     email: row.email,
     role: row.role,
+    profile_image: row.profile_image,
   };
 }
 
@@ -37,7 +39,7 @@ async function findUserRecordByEmail(
   email: string,
 ): Promise<UserWithPasswordRow | null> {
   const { rows } = await pool.query<UserWithPasswordRow>(
-    `SELECT id_user, nama, email, role, password_hash
+    `SELECT id_user, nama, email, role, profile_image, password_hash
      FROM users
      WHERE email = $1
      LIMIT 1`,
@@ -49,7 +51,7 @@ async function findUserRecordByEmail(
 
 export async function findUserById(id: number): Promise<AuthUser | null> {
   const { rows } = await pool.query<UserRow>(
-    `SELECT id_user, nama, email, role
+    `SELECT id_user, nama, email, role, profile_image
      FROM users
      WHERE id_user = $1
      LIMIT 1`,
@@ -73,7 +75,7 @@ export async function registerUser(
   const { rows } = await pool.query<UserRow>(
     `INSERT INTO users (nama, email, password_hash, role)
      VALUES ($1, $2, $3, 'customer'::role_type)
-     RETURNING id_user, nama, email, role`,
+     RETURNING id_user, nama, email, role, profile_image`,
     [input.nama, input.email, passwordHash],
   );
 

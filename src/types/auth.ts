@@ -7,6 +7,7 @@ export interface AuthUser {
   nama: string;
   email: string;
   role: UserRole;
+  profile_image: string | null;
 }
 
 export interface AuthenticatedRequest extends Request {

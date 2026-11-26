@@ -17,6 +17,7 @@ interface ItemRow {
   stok: number;
   harga_sewa_harian: string;
   denda_harian: string;
+  original_price: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -32,6 +33,7 @@ export interface ItemRecord {
   stok: number;
   harga_sewa_harian: string;
   denda_harian: string;
+  original_price: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -59,6 +61,7 @@ const ITEM_SELECT = `
     i.stok,
     i.harga_sewa_harian,
     i.denda_harian,
+    i.original_price,
     i.created_at,
     i.updated_at
   FROM items i
@@ -77,6 +80,8 @@ function toItemRecord(row: ItemRow): ItemRecord {
     stok: row.stok,
     harga_sewa_harian: formatMoney(row.harga_sewa_harian),
     denda_harian: formatMoney(row.denda_harian),
+    original_price:
+      row.original_price === null ? null : formatMoney(row.original_price),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -143,8 +148,8 @@ export async function createItem(
 ): Promise<ItemRecord> {
   const { rows } = await pool.query<{ id_items: number }>(
     `INSERT INTO items
-       (id_kategori, nama_item, deskripsi, image, stok, harga_sewa_harian, denda_harian)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+       (id_kategori, nama_item, deskripsi, image, stok, harga_sewa_harian, denda_harian, original_price)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id_items`,
     [
       input.id_kategori,
@@ -154,6 +159,7 @@ export async function createItem(
       input.stok,
       input.harga_sewa_harian,
       input.denda_harian,
+      input.original_price ?? null,
     ],
   );
 
@@ -180,9 +186,10 @@ export async function updateItem(
        stok = $4,
        harga_sewa_harian = $5,
        denda_harian = $6,
-       image = COALESCE($7, image),
+       original_price = COALESCE($7, original_price),
+       image = COALESCE($8, image),
        updated_at = CURRENT_TIMESTAMP
-     WHERE id_items = $8
+     WHERE id_items = $9
      RETURNING id_items`,
     [
       input.id_kategori,
@@ -191,6 +198,7 @@ export async function updateItem(
       input.stok,
       input.harga_sewa_harian,
       input.denda_harian,
+      input.original_price ?? null,
       image,
       id,
     ],

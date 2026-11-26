@@ -73,6 +73,10 @@
     {
       "key": "pemohonEmail",
       "value": ""
+    },
+    {
+      "key": "rentalHilangId",
+      "value": ""
     }
   ],
   "item": [
@@ -260,6 +264,89 @@
               ]
             }
           }
+        },
+        {
+          "name": "Upload Foto Profil",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Foto profil tersimpan', function () { pm.expect(body.data.profile_image).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "profile_image",
+                  "type": "file",
+                  "src": "{{imagePath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/profile-image",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me",
+                "profile-image"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Hapus Foto Profil",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Foto profil kosong', function () { pm.expect(pm.response.json().data.profile_image).to.eql(null); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/profile-image",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me",
+                "profile-image"
+              ]
+            }
+          }
         }
       ]
     },
@@ -317,6 +404,7 @@
                 "exec": [
                   "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
                   "const body = pm.response.json();",
+                  "pm.test('Harga asli tersimpan', function () { pm.expect(body.data.original_price).to.eql('500000.00'); });",
                   "pm.test('Harga dua desimal', function () { pm.expect(body.data.harga_sewa_harian).to.eql('75000.00'); });",
                   "pm.collectionVariables.set('itemId', body.data.id_items);"
                 ]
@@ -368,6 +456,11 @@
                   "key": "image",
                   "type": "file",
                   "src": "{{imagePath}}"
+                },
+                {
+                  "key": "original_price",
+                  "value": "500000",
+                  "type": "text"
                 }
               ]
             },
@@ -471,6 +564,11 @@
                 {
                   "key": "denda_harian",
                   "value": "15000",
+                  "type": "text"
+                },
+                {
+                  "key": "original_price",
+                  "value": "500000",
                   "type": "text"
                 }
               ]
@@ -1035,6 +1133,323 @@
                 "api",
                 "rentals",
                 "{{rentalCancelId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Penggantian Barang Hilang",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const pad = function (n) { return String(n).padStart(2, '0'); };",
+              "const iso = function (d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };",
+              "const now = new Date();",
+              "pm.collectionVariables.set('hariIni', iso(now));",
+              "pm.collectionVariables.set('tanggalMulai', iso(now));",
+              "pm.collectionVariables.set('tanggalSelesai', iso(now));"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Ajukan Rental Hilang",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Snapshot harga asli tersedia', function () { pm.expect(body.data.items[0].original_price_at_rental).to.be.a('string'); });",
+                  "pm.collectionVariables.set('rentalHilangId', body.data.id_rental);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "tanggal_mulai",
+                  "value": "{{tanggalMulai}}",
+                  "type": "text"
+                },
+                {
+                  "key": "tanggal_selesai",
+                  "value": "{{tanggalSelesai}}",
+                  "type": "text"
+                },
+                {
+                  "key": "items",
+                  "value": "[{\"id_items\":{{itemId}},\"jumlah\":1}]",
+                  "type": "text"
+                },
+                {
+                  "key": "bukti_transfer",
+                  "type": "file",
+                  "src": "{{buktiPath}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Setujui Rental Hilang",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status approved', function () { pm.expect(pm.response.json().data.status).to.eql('approved'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals/{{rentalHilangId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals",
+                "{{rentalHilangId}}",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mulai Rental Hilang",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status ongoing', function () { pm.expect(pm.response.json().data.status).to.eql('ongoing'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ongoing\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals/{{rentalHilangId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals",
+                "{{rentalHilangId}}",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Proses Pengembalian Hilang",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Penggantian Pending', function () { pm.expect(body.data.penggantian.status).to.eql('Pending'); });",
+                  "pm.test('Nominal penggantian tersedia', function () { pm.expect(body.data.penggantian.total_amount).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tanggal_kembali_aktual\": \"{{hariIni}}\",\n  \"kondisi_pengembalian\": \"Hilang\",\n  \"catatan_pengembalian\": \"Barang hilang, perlu penggantian\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals/{{rentalHilangId}}/return",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals",
+                "{{rentalHilangId}}",
+                "return"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Selesaikan Penggantian",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Status Completed', function () { pm.expect(body.data.status).to.eql('Completed'); });",
+                  "pm.test('Nominal tidak berubah', function () { pm.expect(body.data.total_amount).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Completed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals/{{rentalHilangId}}/replacement",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals",
+                "{{rentalHilangId}}",
+                "replacement"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Detail Rental Setelah Penggantian",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Penggantian Completed', function () { pm.expect(pm.response.json().data.penggantian.status).to.eql('Completed'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/rentals/{{rentalHilangId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rentals",
+                "{{rentalHilangId}}"
               ]
             }
           }

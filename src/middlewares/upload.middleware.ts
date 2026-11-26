@@ -44,3 +44,5 @@ const upload = multer({
 export const uploadItemImage = upload.single("image");
 
 export const uploadTransferProof = upload.single("bukti_transfer");
+
+export const uploadProfileImage = upload.single("profile_image");
