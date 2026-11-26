@@ -4,6 +4,7 @@ import type { AuthUser, UserRole } from "../types/auth.ts";
 import { AppError } from "../utils/app-error.ts";
 import { signToken } from "../utils/auth.ts";
 import type {
+  ChangePasswordInput,
   LoginInput,
   RegisterInput,
 } from "../validations/auth.validation.ts";
@@ -14,6 +15,7 @@ interface UserRow {
   email: string;
   role: UserRole;
   profile_image: string | null;
+  phone_number: string | null;
 }
 
 interface UserWithPasswordRow extends UserRow {
@@ -32,6 +34,7 @@ function toAuthUser(row: UserRow): AuthUser {
     email: row.email,
     role: row.role,
     profile_image: row.profile_image,
+    phone_number: row.phone_number,
   };
 }
 
@@ -39,7 +42,7 @@ async function findUserRecordByEmail(
   email: string,
 ): Promise<UserWithPasswordRow | null> {
   const { rows } = await pool.query<UserWithPasswordRow>(
-    `SELECT id_user, nama, email, role, profile_image, password_hash
+    `SELECT id_user, nama, email, role, profile_image, phone_number, password_hash
      FROM users
      WHERE email = $1
      LIMIT 1`,
@@ -51,7 +54,7 @@ async function findUserRecordByEmail(
 
 export async function findUserById(id: number): Promise<AuthUser | null> {
   const { rows } = await pool.query<UserRow>(
-    `SELECT id_user, nama, email, role, profile_image
+    `SELECT id_user, nama, email, role, profile_image, phone_number
      FROM users
      WHERE id_user = $1
      LIMIT 1`,
@@ -70,13 +73,23 @@ export async function registerUser(
     throw new AppError("Email sudah terdaftar", 409);
   }
 
+  // Cegah nomor telepon dipakai oleh akun lain.
+  const existingPhone = await pool.query<{ id_user: number }>(
+    `SELECT id_user FROM users WHERE phone_number = $1 LIMIT 1`,
+    [input.phone_number],
+  );
+
+  if (existingPhone.rows[0]) {
+    throw new AppError("Nomor telepon sudah terdaftar", 409);
+  }
+
   const passwordHash = await bcrypt.hash(input.password, 10);
 
   const { rows } = await pool.query<UserRow>(
-    `INSERT INTO users (nama, email, password_hash, role)
-     VALUES ($1, $2, $3, 'customer'::role_type)
-     RETURNING id_user, nama, email, role, profile_image`,
-    [input.nama, input.email, passwordHash],
+    `INSERT INTO users (nama, email, password_hash, role, phone_number)
+     VALUES ($1, $2, $3, 'customer'::role_type, $4)
+     RETURNING id_user, nama, email, role, profile_image, phone_number`,
+    [input.nama, input.email, passwordHash, input.phone_number],
   );
 
   const user = toAuthUser(rows[0]);
@@ -102,4 +115,45 @@ export async function loginUser(
   const user = toAuthUser(record);
 
   return { user, token: signToken(user) };
+}
+
+export async function findUserWithPasswordById(
+  id: number,
+): Promise<UserWithPasswordRow | null> {
+  const { rows } = await pool.query<UserWithPasswordRow>(
+    `SELECT id_user, nama, email, role, profile_image, phone_number, password_hash
+     FROM users
+     WHERE id_user = $1
+     LIMIT 1`,
+    [id],
+  );
+
+  return rows[0] ?? null;
+}
+
+export async function changePassword(
+  userId: number,
+  input: ChangePasswordInput,
+): Promise<void> {
+  const record = await findUserWithPasswordById(userId);
+
+  if (!record) {
+    throw new AppError("User tidak ditemukan", 404);
+  }
+
+  const isMatch = await bcrypt.compare(
+    input.current_password,
+    record.password_hash,
+  );
+
+  if (!isMatch) {
+    throw new AppError("Password lama salah", 400);
+  }
+
+  const newHash = await bcrypt.hash(input.new_password, 10);
+
+  await pool.query(
+    `UPDATE users SET password_hash = $1 WHERE id_user = $2`,
+    [newHash, userId],
+  );
 }

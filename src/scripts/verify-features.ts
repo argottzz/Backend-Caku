@@ -158,6 +158,11 @@ function rentalForm(
     fixtureBlob("postman/fixtures/bukti-transfer.png"),
     "bukti-transfer.png",
   );
+  form.append(
+    "identity_image",
+    fixtureBlob("postman/fixtures/item.png"),
+    "identity.png",
+  );
   return form;
 }
 
@@ -837,6 +842,178 @@ async function main() {
       assert.equal(rows[0].total, 0);
     },
   );
+
+  await check("Checkout tanpa bukti_transfer ditolak 400", async () => {
+    const form = new FormData();
+    const today = todayDateString();
+    form.append("tanggal_mulai", today);
+    form.append("tanggal_selesai", today);
+    form.append("items", JSON.stringify([{ id_items: itemA, jumlah: 1 }]));
+    form.append(
+      "identity_image",
+      fixtureBlob("postman/fixtures/item.png"),
+      "identity.png",
+    );
+
+    const result = await api("/api/rentals", {
+      method: "POST",
+      token: customerToken,
+      form,
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.match(String(result.body.message), /Bukti transfer/);
+  });
+
+  await check("Checkout tanpa identity_image ditolak 400", async () => {
+    const form = new FormData();
+    const today = todayDateString();
+    form.append("tanggal_mulai", today);
+    form.append("tanggal_selesai", today);
+    form.append("items", JSON.stringify([{ id_items: itemA, jumlah: 1 }]));
+    form.append(
+      "bukti_transfer",
+      fixtureBlob("postman/fixtures/bukti-transfer.png"),
+      "bukti-transfer.png",
+    );
+
+    const result = await api("/api/rentals", {
+      method: "POST",
+      token: customerToken,
+      form,
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.match(String(result.body.message), /KTP/);
+  });
+
+  let identityRentalId = 0;
+  await check("Checkout dengan kedua file valid menyimpan foto KTP", async () => {
+    const result = await api("/api/rentals", {
+      method: "POST",
+      token: customerToken,
+      form: rentalForm([{ id_items: itemA, jumlah: 1 }]),
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.body));
+    identityRentalId = result.body.data.id_rental;
+    rentalIds.push(identityRentalId);
+    proofUrls.push(result.body.data.bukti_transfer);
+    proofUrls.push(result.body.data.identity_image);
+
+    assert.match(
+      String(result.body.data.identity_image),
+      /^https:\/\/res\.cloudinary\.com\//,
+    );
+  });
+
+  await check("Detail rental mengembalikan identity_image", async () => {
+    const result = await api(`/api/rentals/${identityRentalId}`, {
+      token: adminToken,
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.ok(result.body.data.identity_image);
+    assert.equal(
+      result.body.data.identity_image_public_id,
+      undefined,
+      "public_id tidak boleh dikirim ke client",
+    );
+  });
+
+  await check("Registrasi tanpa nomor telepon ditolak 400", async () => {
+    const result = await api("/api/auth/register", {
+      method: "POST",
+      json: {
+        nama: "No Phone User",
+        email: `no-phone-${stamp}@caku.test`,
+        password: password,
+      },
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+  });
+
+  await check("Registrasi dengan nomor telepon valid berhasil", async () => {
+    const result = await api("/api/auth/register", {
+      method: "POST",
+      json: {
+        nama: "Phone User",
+        email: `phone-${stamp}@caku.test`,
+        phone_number: "081234567890",
+        password,
+      },
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.body));
+    assert.equal(result.body.data.phone_number, "081234567890");
+  });
+
+  await check("GET /api/auth/me mengembalikan phone_number", async () => {
+    const result = await api("/api/auth/me", { token: customerToken });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.data.phone_number, null);
+  });
+
+  await check("Customer dapat menambahkan nomor telepon via PATCH /api/users/me", async () => {
+    const result = await api("/api/users/me", {
+      method: "PATCH",
+      token: customerToken,
+      json: { phone_number: "089999999999" },
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.data.phone_number, "089999999999");
+  });
+
+  await check("Ubah kata sandi dengan data valid berhasil", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      token: customerToken,
+      json: {
+        current_password: password,
+        new_password: "NewPass123!",
+        confirm_password: "NewPass123!",
+      },
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+  });
+
+  await check("Password baru dapat digunakan untuk login", async () => {
+    const token = await login(`test-customer-${stamp}@caku.test`, "NewPass123!");
+    assert.equal(typeof token, "string");
+  });
+
+  await check("Password lama salah ditolak", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      token: customerToken,
+      json: {
+        current_password: "salah",
+        new_password: "AnotherPass1!",
+        confirm_password: "AnotherPass1!",
+      },
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+  });
+
+  await check("Konfirmasi password tidak cocok ditolak", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      token: customerToken,
+      json: {
+        current_password: "NewPass123!",
+        new_password: "AnotherPass1!",
+        confirm_password: "BedaPass1!",
+      },
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+  });
+
+  await check("Request change-password tanpa JWT ditolak", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      json: {
+        current_password: "x",
+        new_password: "y",
+        confirm_password: "y",
+      },
+    });
+    assert.equal(result.status, 401);
+  });
 
   await check("Admin dapat menghapus foto profil sendiri", async () => {
     const result = await api("/api/users/me/profile-image", {

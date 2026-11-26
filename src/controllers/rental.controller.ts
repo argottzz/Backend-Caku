@@ -9,7 +9,12 @@ import {
   updateRentalStatus,
 } from "../services/rental.service.ts";
 import type { AuthenticatedRequest } from "../types/auth.ts";
-import { deleteCloudinaryFile, saveTransferProof } from "../utils/file.ts";
+import {
+  deleteCloudinaryByPublicId,
+  deleteCloudinaryFile,
+  saveIdentityImage,
+  saveTransferProof,
+} from "../utils/file.ts";
 import { parseId } from "../utils/parseId.ts";
 import { updateReplacementSchema } from "../validations/replacement.validation.ts";
 import {
@@ -76,6 +81,7 @@ class RentalController {
 
   create = async (req: Request, res: Response, next: NextFunction) => {
     let savedProof: string | null = null;
+  let savedIdentity: { url: string; publicId: string } | null = null;
 
     try {
       const rawItems = req.body?.items;
@@ -106,19 +112,37 @@ class RentalController {
         });
       }
 
-      if (!req.file) {
+      const uploadedFiles = (req.files ?? {}) as {
+        bukti_transfer?: Express.Multer.File[];
+        identity_image?: Express.Multer.File[];
+      };
+
+      const transferFile = uploadedFiles.bukti_transfer?.[0];
+      const identityFile = uploadedFiles.identity_image?.[0];
+
+      if (!transferFile) {
         return res.status(400).json({
           success: false,
           message: "Bukti transfer wajib diunggah",
         });
       }
 
-      savedProof = await saveTransferProof(req.file);
+      if (!identityFile) {
+        return res.status(400).json({
+          success: false,
+          message: "Foto KTP wajib diunggah",
+        });
+      }
+
+      savedProof = await saveTransferProof(transferFile);
+      savedIdentity = await saveIdentityImage(identityFile);
 
       const rental = await createRental(
         (req as AuthenticatedRequest).user.id,
         validation.data,
         savedProof,
+        savedIdentity.url,
+        savedIdentity.publicId,
       );
 
       return res.status(201).json({
@@ -129,6 +153,10 @@ class RentalController {
     } catch (error) {
       if (savedProof) {
         await deleteCloudinaryFile(savedProof);
+      }
+
+      if (savedIdentity) {
+        await deleteCloudinaryByPublicId(savedIdentity.publicId);
       }
 
       next(error);
@@ -146,13 +174,17 @@ class RentalController {
         });
       }
 
-      const buktiTransfer = await deleteRental(
+      const { buktiTransfer, identityPublicId } = await deleteRental(
         id,
         (req as AuthenticatedRequest).user.id,
       );
 
       if (buktiTransfer) {
         await deleteCloudinaryFile(buktiTransfer);
+      }
+
+      if (identityPublicId) {
+        await deleteCloudinaryByPublicId(identityPublicId);
       }
 
       return res.json({

@@ -801,6 +801,11 @@
                   "key": "bukti_transfer",
                   "type": "file",
                   "src": "{{buktiPath}}"
+                },
+                {
+                  "key": "identity_image",
+                  "type": "file",
+                  "src": "{{buktiPath}}"
                 }
               ]
             },
@@ -1088,6 +1093,11 @@
                   "key": "bukti_transfer",
                   "type": "file",
                   "src": "{{buktiPath}}"
+                },
+                {
+                  "key": "identity_image",
+                  "type": "file",
+                  "src": "{{buktiPath}}"
                 }
               ]
             },
@@ -1202,6 +1212,11 @@
                 },
                 {
                   "key": "bukti_transfer",
+                  "type": "file",
+                  "src": "{{buktiPath}}"
+                },
+                {
+                  "key": "identity_image",
                   "type": "file",
                   "src": "{{buktiPath}}"
                 }

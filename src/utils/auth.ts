@@ -31,7 +31,7 @@ function toAuthUser(payload: JwtPayload): AuthUser | null {
 
   // Foto profil tidak disimpan di dalam token. Nilai terbaru selalu
   // dibaca dari database oleh middleware verifyToken.
-  return { id, nama, email, role: role as UserRole, profile_image: null };
+  return { id, nama, email, role: role as UserRole, profile_image: null, phone_number: null };
 }
 
 export function decodeToken(token: string): AuthUser | null {

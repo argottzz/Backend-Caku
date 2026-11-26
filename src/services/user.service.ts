@@ -7,6 +7,7 @@ import {
   type UploadedImageAsset,
 } from "../utils/file.ts";
 import { findUserById } from "./auth.service.ts";
+import type { UpdateProfileInput } from "../validations/auth.validation.ts";
 
 interface ProfileImageRow {
   profile_image: string | null;
@@ -94,6 +95,58 @@ export async function updateProfileImage(
  * diinginkan) dan aset lama hanya menjadi orphan yang dicatat sebagai
  * warning. Jika database gagal, foto lama tetap utuh.
  */
+export async function updateProfile(
+  userId: number,
+  input: UpdateProfileInput,
+): Promise<AuthUser> {
+  const current = await findProfileImageRow(userId);
+
+  if (!current) {
+    throw new AppError("User tidak ditemukan", 404);
+  }
+
+  // Cegah nomor telepon dipakai oleh akun lain.
+  if (input.phone_number) {
+    const existing = await pool.query<{ id_user: number }>(
+      `SELECT id_user FROM users WHERE phone_number = $1 AND id_user <> $2 LIMIT 1`,
+      [input.phone_number, userId],
+    );
+
+    if (existing.rows[0]) {
+      throw new AppError("Nomor telepon sudah terdaftar", 409);
+    }
+  }
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  if (input.phone_number !== undefined) {
+    fields.push(`phone_number = $${idx++}`);
+    values.push(input.phone_number);
+  }
+
+  if (input.nama !== undefined) {
+    fields.push(`nama = $${idx++}`);
+    values.push(input.nama);
+  }
+
+  if (fields.length === 0) {
+    const user = await findUserById(userId);
+    if (!user) throw new AppError("User tidak ditemukan", 404);
+    return user;
+  }
+
+  values.push(userId);
+  await pool.query(
+    `UPDATE users SET ${fields.join(", ")} WHERE id_user = $${idx}`,
+    values,
+  );
+
+  const user = await findUserById(userId);
+  if (!user) throw new AppError("User tidak ditemukan", 404);
+  return user;
+}
 export async function removeProfileImage(userId: number): Promise<AuthUser> {
   const current = await findProfileImageRow(userId);
 

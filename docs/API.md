@@ -97,7 +97,7 @@ Login dan register menambahkan `token` di level atas:
 {
   "success": true,
   "message": "Login berhasil",
-  "data": { "id": 2, "nama": "Customer Caku", "email": "customer@caku.test", "role": "customer", "profile_image": null },
+  "data": { "id": 2, "nama": "Customer Caku", "email": "customer@caku.test", "role": "customer", "profile_image": null, "phone_number": null },
   "token": "<jwt>"
 }
 ```
@@ -155,12 +155,13 @@ Klaim `role` di dalam JWT tidak dipakai untuk otorisasi, sehingga:
 - Field gambar barang: `image`.
 - Field bukti transfer: `bukti_transfer`.
 - Field foto profil: `profile_image`.
+- Field foto KTP (jaminan): `identity_image`.
 - Format: JPG, JPEG, PNG, WEBP.
 - Ukuran maksimal: 5 MB.
 - File disimpan ke **Cloudinary**, bukan ke disk server.
 - Nama file asli tidak dipakai; `public_id` Cloudinary berupa UUID
-  (`caku/items/<uuid>`, `caku/bukti-transfer/<uuid>`, atau
-  `caku/profile-images/<uuid>`).
+  (`caku/items/<uuid>`, `caku/bukti-transfer/<uuid>`, `caku/profile-images/<uuid>`,
+  atau `caku/identity/<uuid>`).
 - Isi file divalidasi (magic bytes), bukan hanya ekstensi.
 - Bukti transfer **wajib** saat mengajukan rental.
 - Kolom `image` dan `bukti_transfer` menyimpan **URL Cloudinary lengkap**.
@@ -299,7 +300,7 @@ barang hilang.
 
 ## 5. Endpoint
 
-Ringkasan 25 endpoint:
+Ringkasan 27 endpoint:
 
 | No | Method | Endpoint | Akses |
 | -- | ------ | -------- | ----- |
@@ -328,6 +329,8 @@ Ringkasan 25 endpoint:
 | 23 | PATCH | `/api/admin-applications/:id/reject` | Admin |
 | 24 | PATCH | `/api/users/me/profile-image` | Auth |
 | 25 | DELETE | `/api/users/me/profile-image` | Auth |
+| 26 | PATCH | `/api/users/me` | Auth |
+| 27 | PATCH | `/api/auth/change-password` | Auth |
 
 ---
 
@@ -336,11 +339,11 @@ Ringkasan 25 endpoint:
 Body JSON:
 
 ```json
-{ "nama": "Budi", "email": "budi@example.com", "password": "Rahasia123" }
+{ "nama": "Budi", "email": "budi@example.com", "phone_number": "081234567890", "password": "Rahasia123" }
 ```
 
-Validasi: `nama` 3–100 karakter, `email` valid dan unik, `password` 6–72 karakter.
-Email dinormalisasi menjadi huruf kecil.
+Validasi: `nama` 3–100 karakter, `email` valid dan unik, `phone_number` 8–15 digit (boleh diawali `+`), `password` 6–72 karakter.
+Email dinormalisasi menjadi huruf kecil. Nomor telepon wajib untuk registrasi baru. Nomor telepon duplikat → `409`.
 
 Response `201` + token. Email duplikat → `409`.
 
@@ -489,6 +492,8 @@ Response `200` + `pagination`. Ringkasan tiap rental:
   "durasi_hari": 3,
   "bukti_transfer": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/bukti-transfer/<uuid>.png",
   "bukti_transfer_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/bukti-transfer/<uuid>.png",
+  "identity_image": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/identity/<uuid>.png",
+  "identity_image_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/identity/<uuid>.png",
   "status": "pending",
   "kondisi_pengembalian": null,
   "catatan_pengembalian": null,
@@ -569,11 +574,14 @@ Aturan:
 - Item tidak ditemukan → `400`.
 - Item dengan `original_price` `NULL` → `409` (belum memiliki dasar penggantian).
 - Bukti transfer tidak ada → `400`.
+- Foto KTP tidak ada → `400`.
 - Harga asli diambil dari database dan disimpan sebagai snapshot
   `original_price_at_rental` dalam transaksi yang sama. Nilai harga yang dikirim
   client diabaikan.
+- Checkout membutuhkan dua file multipart: `bukti_transfer` (bukti pembayaran)
+  dan `identity_image` (foto KTP sebagai jaminan). Keduanya wajib.
 
-Response `201` berisi detail rental dan file bukti.
+Response `201` berisi detail rental, file bukti, dan foto KTP.
 
 ---
 
@@ -879,6 +887,46 @@ Menghapus foto profil milik akun yang sedang login.
 - Kegagalan hapus Cloudinary hanya dicatat sebagai warning; akun tetap tanpa foto.
 - Response `200` berisi profil terbaru dengan `profile_image: null`.
 - `401` jika belum login.
+
+---
+
+### 5.26 PATCH `/api/users/me` (auth)
+
+Memperbarui profil pengguna yang sedang login (saat ini: `phone_number`, dan opsional `nama`).
+
+Body JSON:
+
+```json
+{ "phone_number": "081234567890" }
+```
+
+- Identitas diambil dari JWT; `user_id`/`id_user` di body diabaikan.
+- `phone_number`: 8–15 digit, boleh diawali `+`. Duplikat → `409`.
+- Jika field tidak dikirim, nilai lama dipertahankan.
+- Response `200` berisi profil terbaru (termasuk `phone_number`).
+- `400` validasi gagal, `401` belum login, `404` user tidak ditemukan.
+
+---
+
+### 5.27 PATCH `/api/auth/change-password` (auth)
+
+Mengubah kata sandi pengguna yang sedang login.
+
+Body JSON:
+
+```json
+{
+  "current_password": "password_lama",
+  "new_password": "password_baru",
+  "confirm_password": "password_baru"
+}
+```
+
+- Validasi JWT wajib.
+- Password lama diverifikasi dengan bcrypt.
+- `new_password` 6–72 karakter; harus sama dengan `confirm_password`.
+- Response `200`: `{ "success": true, "message": "Password berhasil diperbarui" }`.
+- Password lama salah → `400`. Konfirmasi tidak cocok → `400`. Token invalid → `401`.
 
 ---
 

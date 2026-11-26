@@ -41,8 +41,22 @@ const upload = multer({
   fileFilter: imageFilter,
 });
 
+const uploadCheckoutMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: 2,
+  },
+  fileFilter: imageFilter,
+});
+
 export const uploadItemImage = upload.single("image");
 
 export const uploadTransferProof = upload.single("bukti_transfer");
 
 export const uploadProfileImage = upload.single("profile_image");
+
+export const uploadRentalCheckout = uploadCheckoutMulter.fields([
+  { name: "bukti_transfer", maxCount: 1 },
+  { name: "identity_image", maxCount: 1 },
+]);
