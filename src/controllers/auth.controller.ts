@@ -1,11 +1,13 @@
 import type { NextFunction, Request, Response } from "express";
 import {
+  changePassword,
   findUserById,
   loginUser,
   registerUser,
 } from "../services/auth.service.ts";
 import type { AuthenticatedRequest } from "../types/auth.ts";
 import {
+  changePasswordSchema,
   loginSchema,
   registerSchema,
 } from "../validations/auth.validation.ts";
@@ -84,6 +86,30 @@ class AuthController {
         success: true,
         message: "Profil berhasil diambil",
         data: user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+  changePassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = (req as AuthenticatedRequest).user;
+
+      const validation = changePasswordSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Data tidak valid",
+          error: validation.error.issues,
+        });
+      }
+
+      await changePassword(id, validation.data);
+
+      return res.json({
+        success: true,
+        message: "Password berhasil diperbarui",
       });
     } catch (error) {
       next(error);

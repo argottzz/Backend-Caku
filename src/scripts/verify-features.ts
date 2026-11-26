@@ -917,6 +917,104 @@ async function main() {
     );
   });
 
+  await check("Registrasi tanpa nomor telepon ditolak 400", async () => {
+    const result = await api("/api/auth/register", {
+      method: "POST",
+      json: {
+        nama: "No Phone User",
+        email: `no-phone-${stamp}@caku.test`,
+        password: password,
+      },
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+  });
+
+  await check("Registrasi dengan nomor telepon valid berhasil", async () => {
+    const result = await api("/api/auth/register", {
+      method: "POST",
+      json: {
+        nama: "Phone User",
+        email: `phone-${stamp}@caku.test`,
+        phone_number: "081234567890",
+        password,
+      },
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.body));
+    assert.equal(result.body.data.phone_number, "081234567890");
+  });
+
+  await check("GET /api/auth/me mengembalikan phone_number", async () => {
+    const result = await api("/api/auth/me", { token: customerToken });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.data.phone_number, null);
+  });
+
+  await check("Customer dapat menambahkan nomor telepon via PATCH /api/users/me", async () => {
+    const result = await api("/api/users/me", {
+      method: "PATCH",
+      token: customerToken,
+      json: { phone_number: "089999999999" },
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.data.phone_number, "089999999999");
+  });
+
+  await check("Ubah kata sandi dengan data valid berhasil", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      token: customerToken,
+      json: {
+        current_password: password,
+        new_password: "NewPass123!",
+        confirm_password: "NewPass123!",
+      },
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+  });
+
+  await check("Password baru dapat digunakan untuk login", async () => {
+    const token = await login(`test-customer-${stamp}@caku.test`, "NewPass123!");
+    assert.equal(typeof token, "string");
+  });
+
+  await check("Password lama salah ditolak", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      token: customerToken,
+      json: {
+        current_password: "salah",
+        new_password: "AnotherPass1!",
+        confirm_password: "AnotherPass1!",
+      },
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+  });
+
+  await check("Konfirmasi password tidak cocok ditolak", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      token: customerToken,
+      json: {
+        current_password: "NewPass123!",
+        new_password: "AnotherPass1!",
+        confirm_password: "BedaPass1!",
+      },
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+  });
+
+  await check("Request change-password tanpa JWT ditolak", async () => {
+    const result = await api("/api/auth/change-password", {
+      method: "PATCH",
+      json: {
+        current_password: "x",
+        new_password: "y",
+        confirm_password: "y",
+      },
+    });
+    assert.equal(result.status, 401);
+  });
+
   await check("Admin dapat menghapus foto profil sendiri", async () => {
     const result = await api("/api/users/me/profile-image", {
       method: "DELETE",

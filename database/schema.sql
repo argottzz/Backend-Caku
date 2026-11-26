@@ -34,6 +34,9 @@ CREATE TABLE users (
     profile_image TEXT,
     profile_image_public_id VARCHAR(255),
 
+    -- Nomor telepon Customer (boleh NULL untuk akun lama).
+    phone_number VARCHAR(20),
+
     -- Status pengajuan menjadi admin. NULL berarti belum pernah mengajukan.
     admin_application_status VARCHAR(20),
     admin_application_date TIMESTAMP,

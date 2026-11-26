@@ -6,6 +6,8 @@ import { uploadProfileImage } from "../middlewares/upload.middleware.ts";
 const router = Router();
 
 // Customer dan admin memakai endpoint yang sama; akun ditentukan dari JWT.
+router.patch("/me", verifyToken, userController.updateProfile);
+
 router.patch(
   "/me/profile-image",
   verifyToken,
