@@ -20,6 +20,7 @@ export const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 export const ITEM_IMAGE_FOLDER = "caku/items";
 export const TRANSFER_PROOF_FOLDER = "caku/bukti-transfer";
 export const PROFILE_IMAGE_FOLDER = "caku/profile-images";
+export const IDENTITY_IMAGE_FOLDER = "caku/identity";
 
 export interface UploadedImageAsset {
   url: string;
@@ -114,6 +115,12 @@ export function saveProfileImage(
   file: Express.Multer.File,
 ): Promise<UploadedImageAsset> {
   return uploadImageAsset(file, PROFILE_IMAGE_FOLDER);
+}
+
+export function saveIdentityImage(
+  file: Express.Multer.File,
+): Promise<UploadedImageAsset> {
+  return uploadImageAsset(file, IDENTITY_IMAGE_FOLDER);
 }
 
 function extractPublicId(value: string): string | null {

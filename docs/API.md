@@ -155,12 +155,13 @@ Klaim `role` di dalam JWT tidak dipakai untuk otorisasi, sehingga:
 - Field gambar barang: `image`.
 - Field bukti transfer: `bukti_transfer`.
 - Field foto profil: `profile_image`.
+- Field foto KTP (jaminan): `identity_image`.
 - Format: JPG, JPEG, PNG, WEBP.
 - Ukuran maksimal: 5 MB.
 - File disimpan ke **Cloudinary**, bukan ke disk server.
 - Nama file asli tidak dipakai; `public_id` Cloudinary berupa UUID
-  (`caku/items/<uuid>`, `caku/bukti-transfer/<uuid>`, atau
-  `caku/profile-images/<uuid>`).
+  (`caku/items/<uuid>`, `caku/bukti-transfer/<uuid>`, `caku/profile-images/<uuid>`,
+  atau `caku/identity/<uuid>`).
 - Isi file divalidasi (magic bytes), bukan hanya ekstensi.
 - Bukti transfer **wajib** saat mengajukan rental.
 - Kolom `image` dan `bukti_transfer` menyimpan **URL Cloudinary lengkap**.
@@ -489,6 +490,8 @@ Response `200` + `pagination`. Ringkasan tiap rental:
   "durasi_hari": 3,
   "bukti_transfer": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/bukti-transfer/<uuid>.png",
   "bukti_transfer_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/bukti-transfer/<uuid>.png",
+  "identity_image": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/identity/<uuid>.png",
+  "identity_image_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/identity/<uuid>.png",
   "status": "pending",
   "kondisi_pengembalian": null,
   "catatan_pengembalian": null,
@@ -569,11 +572,14 @@ Aturan:
 - Item tidak ditemukan → `400`.
 - Item dengan `original_price` `NULL` → `409` (belum memiliki dasar penggantian).
 - Bukti transfer tidak ada → `400`.
+- Foto KTP tidak ada → `400`.
 - Harga asli diambil dari database dan disimpan sebagai snapshot
   `original_price_at_rental` dalam transaksi yang sama. Nilai harga yang dikirim
   client diabaikan.
+- Checkout membutuhkan dua file multipart: `bukti_transfer` (bukti pembayaran)
+  dan `identity_image` (foto KTP sebagai jaminan). Keduanya wajib.
 
-Response `201` berisi detail rental dan file bukti.
+Response `201` berisi detail rental, file bukti, dan foto KTP.
 
 ---
 

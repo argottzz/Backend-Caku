@@ -34,6 +34,7 @@ interface RentalRow {
   tanggal_selesai: string;
   tanggal_kembali_aktual: string | null;
   bukti_transfer: string | null;
+  identity_image: string | null;
   status: RentalStatus;
   kondisi_pengembalian: ReturnCondition | null;
   catatan_pengembalian: string | null;
@@ -111,6 +112,8 @@ export interface RentalSummary {
   durasi_hari: number;
   bukti_transfer: string | null;
   bukti_transfer_url: string | null;
+  identity_image: string | null;
+  identity_image_url: string | null;
   status: RentalStatus;
   kondisi_pengembalian: ReturnCondition | null;
   catatan_pengembalian: string | null;
@@ -161,6 +164,7 @@ const RENTAL_LIST_SELECT = `
     r.tanggal_selesai,
     r.tanggal_kembali_aktual,
     r.bukti_transfer,
+    r.identity_image,
     r.status,
     r.kondisi_pengembalian,
     r.catatan_pengembalian,
@@ -248,6 +252,8 @@ function toSummary(row: RentalListRow): RentalSummary {
     durasi_hari: durasi,
     bukti_transfer: row.bukti_transfer,
     bukti_transfer_url: buildFileUrl(row.bukti_transfer),
+    identity_image: row.identity_image,
+    identity_image_url: buildFileUrl(row.identity_image),
     status: row.status,
     kondisi_pengembalian: row.kondisi_pengembalian,
     catatan_pengembalian: row.catatan_pengembalian,
@@ -305,6 +311,8 @@ function toDetail(
     durasi_hari: durasi,
     bukti_transfer: row.bukti_transfer,
     bukti_transfer_url: buildFileUrl(row.bukti_transfer),
+    identity_image: row.identity_image,
+    identity_image_url: buildFileUrl(row.identity_image),
     status: row.status,
     kondisi_pengembalian: row.kondisi_pengembalian,
     catatan_pengembalian: row.catatan_pengembalian,
@@ -408,6 +416,7 @@ export async function findRentalById(
        r.tanggal_selesai,
        r.tanggal_kembali_aktual,
        r.bukti_transfer,
+       r.identity_image,
        r.status,
        r.kondisi_pengembalian,
        r.catatan_pengembalian,
@@ -488,6 +497,8 @@ export async function createRental(
   userId: number,
   input: CreateRentalInput,
   buktiTransfer: string,
+  identityImage: string,
+  identityImagePublicId: string,
 ): Promise<RentalDetail> {
   const rentalId = await withTransaction(async (client) => {
     const itemIds = input.items.map((item) => item.id_items);
@@ -534,10 +545,17 @@ export async function createRental(
 
     const rentalResult = await client.query<{ id_rental: number }>(
       `INSERT INTO rentals
-         (id_user, tanggal_mulai, tanggal_selesai, bukti_transfer, status)
-       VALUES ($1, $2, $3, $4, 'pending'::rental_status)
+         (id_user, tanggal_mulai, tanggal_selesai, bukti_transfer, identity_image, identity_image_public_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending'::rental_status)
        RETURNING id_rental`,
-      [userId, input.tanggal_mulai, input.tanggal_selesai, buktiTransfer],
+      [
+        userId,
+        input.tanggal_mulai,
+        input.tanggal_selesai,
+        buktiTransfer,
+        identityImage,
+        identityImagePublicId,
+      ],
     );
 
     const newRentalId = rentalResult.rows[0].id_rental;
@@ -702,13 +720,14 @@ export async function updateRentalStatus(
 export async function deleteRental(
   id: number,
   userId: number,
-): Promise<string | null> {
+): Promise<{ buktiTransfer: string | null; identityPublicId: string | null }> {
   const { rows } = await pool.query<{
     id_user: number;
     status: RentalStatus;
     bukti_transfer: string | null;
+    identity_image_public_id: string | null;
   }>(
-    `SELECT id_user, status, bukti_transfer
+    `SELECT id_user, status, bukti_transfer, identity_image_public_id
      FROM rentals
      WHERE id_rental = $1`,
     [id],
@@ -741,7 +760,10 @@ export async function deleteRental(
     throw new AppError("Pengajuan tidak dapat dibatalkan", 409);
   }
 
-  return rental.bukti_transfer;
+  return {
+    buktiTransfer: rental.bukti_transfer,
+    identityPublicId: rental.identity_image_public_id,
+  };
 }
 
 /**

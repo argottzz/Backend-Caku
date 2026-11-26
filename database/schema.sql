@@ -136,6 +136,8 @@ CREATE TABLE rentals (
     tanggal_selesai DATE NOT NULL,
     tanggal_kembali_aktual DATE,
     bukti_transfer VARCHAR(255),
+    identity_image TEXT,
+    identity_image_public_id VARCHAR(255),
     status rental_status DEFAULT 'pending' NOT NULL,
     kondisi_pengembalian return_condition,
     catatan_pengembalian TEXT,

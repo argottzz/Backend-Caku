@@ -158,6 +158,11 @@ function rentalForm(
     fixtureBlob("postman/fixtures/bukti-transfer.png"),
     "bukti-transfer.png",
   );
+  form.append(
+    "identity_image",
+    fixtureBlob("postman/fixtures/item.png"),
+    "identity.png",
+  );
   return form;
 }
 
@@ -837,6 +842,80 @@ async function main() {
       assert.equal(rows[0].total, 0);
     },
   );
+
+  await check("Checkout tanpa bukti_transfer ditolak 400", async () => {
+    const form = new FormData();
+    const today = todayDateString();
+    form.append("tanggal_mulai", today);
+    form.append("tanggal_selesai", today);
+    form.append("items", JSON.stringify([{ id_items: itemA, jumlah: 1 }]));
+    form.append(
+      "identity_image",
+      fixtureBlob("postman/fixtures/item.png"),
+      "identity.png",
+    );
+
+    const result = await api("/api/rentals", {
+      method: "POST",
+      token: customerToken,
+      form,
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.match(String(result.body.message), /Bukti transfer/);
+  });
+
+  await check("Checkout tanpa identity_image ditolak 400", async () => {
+    const form = new FormData();
+    const today = todayDateString();
+    form.append("tanggal_mulai", today);
+    form.append("tanggal_selesai", today);
+    form.append("items", JSON.stringify([{ id_items: itemA, jumlah: 1 }]));
+    form.append(
+      "bukti_transfer",
+      fixtureBlob("postman/fixtures/bukti-transfer.png"),
+      "bukti-transfer.png",
+    );
+
+    const result = await api("/api/rentals", {
+      method: "POST",
+      token: customerToken,
+      form,
+    });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.match(String(result.body.message), /KTP/);
+  });
+
+  let identityRentalId = 0;
+  await check("Checkout dengan kedua file valid menyimpan foto KTP", async () => {
+    const result = await api("/api/rentals", {
+      method: "POST",
+      token: customerToken,
+      form: rentalForm([{ id_items: itemA, jumlah: 1 }]),
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.body));
+    identityRentalId = result.body.data.id_rental;
+    rentalIds.push(identityRentalId);
+    proofUrls.push(result.body.data.bukti_transfer);
+    proofUrls.push(result.body.data.identity_image);
+
+    assert.match(
+      String(result.body.data.identity_image),
+      /^https:\/\/res\.cloudinary\.com\//,
+    );
+  });
+
+  await check("Detail rental mengembalikan identity_image", async () => {
+    const result = await api(`/api/rentals/${identityRentalId}`, {
+      token: adminToken,
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.ok(result.body.data.identity_image);
+    assert.equal(
+      result.body.data.identity_image_public_id,
+      undefined,
+      "public_id tidak boleh dikirim ke client",
+    );
+  });
 
   await check("Admin dapat menghapus foto profil sendiri", async () => {
     const result = await api("/api/users/me/profile-image", {

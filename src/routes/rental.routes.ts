@@ -2,7 +2,7 @@ import { Router } from "express";
 import rentalController from "../controllers/rental.controller.ts";
 import { verifyToken } from "../middlewares/auth.middleware.ts";
 import { requireRole } from "../middlewares/role.middleware.ts";
-import { uploadTransferProof } from "../middlewares/upload.middleware.ts";
+import { uploadRentalCheckout } from "../middlewares/upload.middleware.ts";
 
 const router = Router();
 
@@ -13,7 +13,7 @@ router.post(
   "/",
   verifyToken,
   requireRole("customer"),
-  uploadTransferProof,
+  uploadRentalCheckout,
   rentalController.create,
 );
 
