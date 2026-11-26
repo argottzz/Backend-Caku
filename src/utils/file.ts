@@ -19,6 +19,12 @@ export const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
 export const ITEM_IMAGE_FOLDER = "caku/items";
 export const TRANSFER_PROOF_FOLDER = "caku/bukti-transfer";
+export const PROFILE_IMAGE_FOLDER = "caku/profile-images";
+
+export interface UploadedImageAsset {
+  url: string;
+  publicId: string;
+}
 
 export function isAllowedImageMime(mime: string): mime is AllowedImageMime {
   return mime in EXTENSION_BY_MIME;
@@ -54,12 +60,12 @@ function matchesMagicBytes(buffer: Buffer, mime: AllowedImageMime): boolean {
 
 /**
  * Mengunggah gambar ke Cloudinary dengan public_id berupa UUID.
- * Nama file asli tidak pernah dipakai. Mengembalikan secure_url.
+ * Nama file asli tidak pernah dipakai. Mengembalikan URL dan public_id.
  */
-export async function uploadImageToCloudinary(
+export async function uploadImageAsset(
   file: Express.Multer.File,
   folder: string,
-): Promise<string> {
+): Promise<UploadedImageAsset> {
   if (!isCloudinaryConfigured) {
     throw new AppError("Konfigurasi Cloudinary belum lengkap", 500);
   }
@@ -81,7 +87,19 @@ export async function uploadImageToCloudinary(
     overwrite: false,
   });
 
-  return result.secure_url;
+  return { url: result.secure_url, publicId: result.public_id };
+}
+
+/**
+ * Mengunggah gambar dan hanya mengembalikan secure_url.
+ * Dipertahankan agar pemanggil lama tidak berubah.
+ */
+export async function uploadImageToCloudinary(
+  file: Express.Multer.File,
+  folder: string,
+): Promise<string> {
+  const asset = await uploadImageAsset(file, folder);
+  return asset.url;
 }
 
 export function saveItemImage(file: Express.Multer.File): Promise<string> {
@@ -90,6 +108,12 @@ export function saveItemImage(file: Express.Multer.File): Promise<string> {
 
 export function saveTransferProof(file: Express.Multer.File): Promise<string> {
   return uploadImageToCloudinary(file, TRANSFER_PROOF_FOLDER);
+}
+
+export function saveProfileImage(
+  file: Express.Multer.File,
+): Promise<UploadedImageAsset> {
+  return uploadImageAsset(file, PROFILE_IMAGE_FOLDER);
 }
 
 function extractPublicId(value: string): string | null {
@@ -121,6 +145,28 @@ export async function deleteCloudinaryFile(
   const publicId = extractPublicId(storedValue);
 
   if (!publicId) {
+    return;
+  }
+
+  try {
+    await cloudinary.uploader.destroy(publicId, {
+      resource_type: "image",
+      invalidate: true,
+    });
+  } catch (error) {
+    console.warn(`Gagal menghapus aset Cloudinary ${publicId}:`, error);
+  }
+}
+
+/**
+ * Menghapus aset Cloudinary berdasarkan public_id yang tersimpan.
+ * Dipakai untuk foto profil yang menyimpan public_id secara eksplisit.
+ * Kegagalan Cloudinary hanya dicatat agar alur database tidak gagal.
+ */
+export async function deleteCloudinaryByPublicId(
+  publicId: string | null | undefined,
+): Promise<void> {
+  if (!publicId || !isCloudinaryConfigured) {
     return;
   }
 

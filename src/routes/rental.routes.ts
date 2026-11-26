@@ -38,4 +38,11 @@ router.post(
   rentalController.returnRental,
 );
 
+router.patch(
+  "/:id/replacement",
+  verifyToken,
+  requireRole("admin"),
+  rentalController.completeReplacement,
+);
+
 export default router;

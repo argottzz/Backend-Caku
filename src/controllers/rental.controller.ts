@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import {
+  completeReplacement,
   createRental,
   deleteRental,
   findRentals,
@@ -10,6 +11,7 @@ import {
 import type { AuthenticatedRequest } from "../types/auth.ts";
 import { deleteCloudinaryFile, saveTransferProof } from "../utils/file.ts";
 import { parseId } from "../utils/parseId.ts";
+import { updateReplacementSchema } from "../validations/replacement.validation.ts";
 import {
   createRentalSchema,
   rentalQuerySchema,
@@ -217,15 +219,68 @@ class RentalController {
         });
       }
 
-      const rental = await returnRental(id, validation.data);
+      const rental = await returnRental(
+        id,
+        validation.data,
+        (req as AuthenticatedRequest).user.id,
+      );
+
+      const message =
+        rental.kondisi_pengembalian === "Baik"
+          ? "Pengembalian berhasil diproses"
+          : rental.penggantian_perlu_ditinjau
+            ? "Pengembalian berhasil diproses, tetapi sebagian barang belum memiliki harga asli sehingga penggantian perlu ditinjau admin"
+            : rental.kondisi_pengembalian === "Hilang"
+              ? "Pengembalian berhasil diproses dan kewajiban penggantian barang hilang telah dicatat"
+              : "Pengembalian berhasil diproses, sesuaikan stok untuk barang rusak";
+
+      return res.json({
+        success: true,
+        message,
+        data: rental,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  completeReplacement = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const id = parseId(req.params.id);
+
+      if (id === null) {
+        return res.status(400).json({
+          success: false,
+          message: "Id rental tidak valid",
+        });
+      }
+
+      const validation = updateReplacementSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Data tidak valid",
+          error: validation.error.issues,
+        });
+      }
+
+      const replacement = await completeReplacement(
+        id,
+        (req as AuthenticatedRequest).user.id,
+      );
 
       return res.json({
         success: true,
         message:
-          rental.kondisi_pengembalian === "Baik"
-            ? "Pengembalian berhasil diproses"
-            : "Pengembalian berhasil diproses, sesuaikan stok untuk barang rusak atau hilang",
-        data: rental,
+          replacement.status === "Completed"
+            ? "Penggantian barang hilang berhasil diselesaikan"
+            : "Status penggantian berhasil diperbarui",
+        data: replacement,
       });
     } catch (error) {
       next(error);

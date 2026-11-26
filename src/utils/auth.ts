@@ -29,7 +29,9 @@ function toAuthUser(payload: JwtPayload): AuthUser | null {
     return null;
   }
 
-  return { id, nama, email, role: role as UserRole };
+  // Foto profil tidak disimpan di dalam token. Nilai terbaru selalu
+  // dibaca dari database oleh middleware verifyToken.
+  return { id, nama, email, role: role as UserRole, profile_image: null };
 }
 
 export function decodeToken(token: string): AuthUser | null {

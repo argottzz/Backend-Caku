@@ -30,6 +30,10 @@ CREATE TABLE users (
     role role_type DEFAULT 'customer' NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
+    -- Foto profil (customer dan admin). NULL berarti belum ada foto.
+    profile_image TEXT,
+    profile_image_public_id VARCHAR(255),
+
     -- Status pengajuan menjadi admin. NULL berarti belum pernah mengajukan.
     admin_application_status VARCHAR(20),
     admin_application_date TIMESTAMP,
@@ -98,6 +102,11 @@ CREATE TABLE items (
     stok INTEGER DEFAULT 0 NOT NULL,
     harga_sewa_harian NUMERIC(12,2) NOT NULL,
     denda_harian NUMERIC(12,2) NOT NULL,
+
+    -- Harga asli barang untuk penggantian jika hilang.
+    -- NULL berarti belum diisi Admin; barang belum boleh disewakan.
+    original_price NUMERIC(12,2),
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -114,7 +123,10 @@ CREATE TABLE items (
         CHECK (harga_sewa_harian >= 0),
 
     CONSTRAINT chk_items_denda
-        CHECK (denda_harian >= 0)
+        CHECK (denda_harian >= 0),
+
+    CONSTRAINT chk_items_original_price
+        CHECK (original_price IS NULL OR original_price >= 0)
 );
 
 CREATE TABLE rentals (
@@ -147,6 +159,9 @@ CREATE TABLE rental_details (
     harga_perhari NUMERIC(12,2) NOT NULL,
     denda_perhari NUMERIC(12,2) NOT NULL,
 
+    -- Snapshot harga asli barang saat rental dibuat.
+    original_price_at_rental NUMERIC(12,2),
+
     CONSTRAINT fk_rental_details_rentals
         FOREIGN KEY (id_rental)
         REFERENCES rentals (id_rental)
@@ -169,7 +184,53 @@ CREATE TABLE rental_details (
         CHECK (harga_perhari >= 0),
 
     CONSTRAINT chk_rental_details_denda
-        CHECK (denda_perhari >= 0)
+        CHECK (denda_perhari >= 0),
+
+    CONSTRAINT chk_rental_details_original_price
+        CHECK (
+            original_price_at_rental IS NULL
+            OR original_price_at_rental >= 0
+        )
+);
+
+-- Kewajiban penggantian barang hilang. Satu rental maksimal satu catatan.
+CREATE TABLE rental_replacements (
+    id_replacement INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_rental INTEGER NOT NULL,
+    total_amount NUMERIC(12,2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'Pending' NOT NULL,
+    recorded_by INTEGER,
+    completed_by INTEGER,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_rental_replacements_rental
+        UNIQUE (id_rental),
+
+    CONSTRAINT fk_rental_replacements_rental
+        FOREIGN KEY (id_rental)
+        REFERENCES rentals (id_rental)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_rental_replacements_recorded_by
+        FOREIGN KEY (recorded_by)
+        REFERENCES users (id_user)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_rental_replacements_completed_by
+        FOREIGN KEY (completed_by)
+        REFERENCES users (id_user)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE,
+
+    CONSTRAINT chk_rental_replacements_total
+        CHECK (total_amount >= 0),
+
+    CONSTRAINT chk_rental_replacements_status
+        CHECK (status IN ('Pending', 'Completed'))
 );
 
 CREATE INDEX idx_items_kategori
@@ -193,3 +254,6 @@ ON rental_details (id_rental);
 
 CREATE INDEX idx_rental_details_items
 ON rental_details (id_items);
+
+CREATE INDEX idx_rental_replacements_status
+ON rental_replacements (status);

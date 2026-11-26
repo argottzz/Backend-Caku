@@ -1,6 +1,10 @@
 import pool, { withTransaction } from "../db/index.ts";
 import type { AuthUser } from "../types/auth.ts";
-import type { RentalStatus, ReturnCondition } from "../types/rental.ts";
+import type {
+  RentalReplacementStatus,
+  RentalStatus,
+  ReturnCondition,
+} from "../types/rental.ts";
 import { AppError } from "../utils/app-error.ts";
 import {
   differenceInDays,
@@ -49,6 +53,19 @@ interface RentalDetailRow {
   jumlah: number;
   harga_perhari: string;
   denda_perhari: string;
+  original_price_at_rental: string | null;
+}
+
+interface ReplacementRow {
+  id_replacement: number;
+  id_rental: number;
+  total_amount: string;
+  status: RentalReplacementStatus;
+  recorded_by: number | null;
+  completed_by: number | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 interface StockRow {
@@ -57,6 +74,7 @@ interface StockRow {
   stok: number;
   harga_sewa_harian: string;
   denda_harian: string;
+  original_price: string | null;
 }
 
 export interface RentalItemDetail {
@@ -66,7 +84,20 @@ export interface RentalItemDetail {
   jumlah: number;
   harga_perhari: string;
   denda_perhari: string;
+  original_price_at_rental: string | null;
   subtotal: string;
+}
+
+export interface RentalReplacement {
+  id_replacement: number;
+  id_rental: number;
+  total_amount: string;
+  status: RentalReplacementStatus;
+  recorded_by: number | null;
+  completed_by: number | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface RentalSummary {
@@ -93,10 +124,19 @@ export interface RentalSummary {
 
 export interface RentalDetail extends RentalSummary {
   items: RentalItemDetail[];
+  penggantian: RentalReplacement | null;
+}
+
+export interface MissingOriginalPriceItem {
+  id_items: number;
+  nama_item: string;
+  jumlah: number;
 }
 
 export interface ReturnRentalResult extends RentalDetail {
   perlu_penyesuaian_stok: boolean;
+  penggantian_perlu_ditinjau: boolean;
+  item_tanpa_harga_asli: MissingOriginalPriceItem[];
 }
 
 export interface Pagination {
@@ -148,6 +188,46 @@ function lateDays(row: {
   );
 }
 
+function toReplacement(row: ReplacementRow): RentalReplacement {
+  return {
+    id_replacement: row.id_replacement,
+    id_rental: row.id_rental,
+    total_amount: formatMoney(row.total_amount),
+    status: row.status,
+    recorded_by: row.recorded_by,
+    completed_by: row.completed_by,
+    completed_at: row.completed_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+/**
+ * Total penggantian = SUM(jumlah x original_price_at_rental).
+ * Mengembalikan null jika ada detail yang belum memiliki snapshot harga
+ * asli. Nilai terbaru dari tabel items tidak pernah dipakai sebagai
+ * pengganti snapshot yang hilang.
+ */
+export function computeReplacementTotalCents(
+  details: Array<{
+    jumlah: number;
+    original_price_at_rental: string | null;
+  }>,
+): number | null {
+  if (details.some((detail) => detail.original_price_at_rental === null)) {
+    return null;
+  }
+
+  return sumCents(
+    ...details.map((detail) =>
+      multiplyCents(
+        toCents(detail.original_price_at_rental as string),
+        detail.jumlah,
+      ),
+    ),
+  );
+}
+
 function toSummary(row: RentalListRow): RentalSummary {
   const durasi = rentalDurationDays(row.tanggal_mulai, row.tanggal_selesai);
   const totalSewa = multiplyCents(toCents(row.total_sewa_dasar), durasi);
@@ -183,6 +263,7 @@ function toSummary(row: RentalListRow): RentalSummary {
 function toDetail(
   row: RentalRow,
   details: RentalDetailRow[],
+  penggantian: RentalReplacement | null,
 ): RentalDetail {
   const durasi = rentalDurationDays(row.tanggal_mulai, row.tanggal_selesai);
 
@@ -193,6 +274,10 @@ function toDetail(
     jumlah: detail.jumlah,
     harga_perhari: formatMoney(detail.harga_perhari),
     denda_perhari: formatMoney(detail.denda_perhari),
+    original_price_at_rental:
+      detail.original_price_at_rental === null
+        ? null
+        : formatMoney(detail.original_price_at_rental),
     subtotal: formatCents(
       multiplyCents(toCents(detail.harga_perhari), detail.jumlah, durasi),
     ),
@@ -230,6 +315,7 @@ function toDetail(
     total_bayar: formatCents(sumCents(totalSewa, totalDenda)),
     created_at: row.created_at,
     items,
+    penggantian,
   };
 }
 
@@ -346,7 +432,8 @@ export async function findRentalById(
        i.nama_item,
        rd.jumlah,
        rd.harga_perhari,
-       rd.denda_perhari
+       rd.denda_perhari,
+       rd.original_price_at_rental
      FROM rental_details rd
      INNER JOIN items i ON i.id_items = rd.id_items
      WHERE rd.id_rental = $1
@@ -354,7 +441,30 @@ export async function findRentalById(
     [id],
   );
 
-  return toDetail(rental, detailResult.rows);
+  const replacementResult = await pool.query<ReplacementRow>(
+    `SELECT
+       id_replacement,
+       id_rental,
+       total_amount,
+       status,
+       recorded_by,
+       completed_by,
+       completed_at,
+       created_at,
+       updated_at
+     FROM rental_replacements
+     WHERE id_rental = $1
+     LIMIT 1`,
+    [id],
+  );
+
+  const replacement = replacementResult.rows[0];
+
+  return toDetail(
+    rental,
+    detailResult.rows,
+    replacement ? toReplacement(replacement) : null,
+  );
 }
 
 export async function getRentalForUser(
@@ -383,7 +493,7 @@ export async function createRental(
     const itemIds = input.items.map((item) => item.id_items);
 
     const stockResult = await client.query<StockRow>(
-      `SELECT id_items, nama_item, stok, harga_sewa_harian, denda_harian
+      `SELECT id_items, nama_item, stok, harga_sewa_harian, denda_harian, original_price
        FROM items
        WHERE id_items = ANY($1::int[])
        ORDER BY id_items
@@ -411,6 +521,15 @@ export async function createRental(
           409,
         );
       }
+
+      // Barang lama tanpa harga asli tidak boleh dipakai pada transaksi
+      // baru karena tidak memiliki dasar penggantian jika hilang.
+      if (record.original_price === null) {
+        throw new AppError(
+          `Harga asli ${record.nama_item} belum diisi admin sehingga barang belum dapat disewakan`,
+          409,
+        );
+      }
     }
 
     const rentalResult = await client.query<{ id_rental: number }>(
@@ -435,14 +554,15 @@ export async function createRental(
 
       await client.query(
         `INSERT INTO rental_details
-           (id_rental, id_items, jumlah, harga_perhari, denda_perhari)
-         VALUES ($1, $2, $3, $4, $5)`,
+           (id_rental, id_items, jumlah, harga_perhari, denda_perhari, original_price_at_rental)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
         [
           newRentalId,
           item.id_items,
           item.jumlah,
           record.harga_sewa_harian,
           record.denda_harian,
+          record.original_price,
         ],
       );
     }
@@ -626,12 +746,23 @@ export async function deleteRental(
 
 /**
  * Memproses pengembalian rental berstatus ongoing.
- * Semua stok detail dikembalikan; kondisi pengembalian hanya bersifat catatan.
+ *
+ * Aturan stok:
+ * - Baik / Rusak: stok dikembalikan seperti perilaku sebelumnya.
+ *   Untuk Rusak, Admin tetap perlu menyesuaikan stok rusak secara manual.
+ * - Hilang: stok TIDAK dikembalikan karena unit tidak tersedia lagi.
+ *
+ * Untuk kondisi Hilang, kewajiban penggantian dihitung dari snapshot
+ * `original_price_at_rental` pada rental_details dan dicatat pada
+ * rental_replacements dalam transaksi database yang sama.
  */
 export async function returnRental(
   id: number,
   input: ReturnRentalInput,
+  adminId: number,
 ): Promise<ReturnRentalResult> {
+  let missingOriginalPriceItems: MissingOriginalPriceItem[] = [];
+
   await withTransaction(async (client) => {
     const rentalResult = await client.query<{
       id_rental: number;
@@ -667,22 +798,58 @@ export async function returnRental(
 
     const detailResult = await client.query<{
       id_items: number;
+      nama_item: string;
       jumlah: number;
+      original_price_at_rental: string | null;
     }>(
-      `SELECT id_items, jumlah
-       FROM rental_details
-       WHERE id_rental = $1
-       ORDER BY id_items`,
+      `SELECT
+         rd.id_items,
+         i.nama_item,
+         rd.jumlah,
+         rd.original_price_at_rental
+       FROM rental_details rd
+       INNER JOIN items i ON i.id_items = rd.id_items
+       WHERE rd.id_rental = $1
+       ORDER BY rd.id_items`,
       [id],
     );
 
-    for (const detail of detailResult.rows) {
-      await client.query(
-        `UPDATE items
-         SET stok = stok + $1, updated_at = CURRENT_TIMESTAMP
-         WHERE id_items = $2`,
-        [detail.jumlah, detail.id_items],
-      );
+    const isLost = input.kondisi_pengembalian === "Hilang";
+
+    // Barang hilang tidak boleh otomatis dianggap tersedia kembali.
+    if (!isLost) {
+      for (const detail of detailResult.rows) {
+        await client.query(
+          `UPDATE items
+           SET stok = stok + $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id_items = $2`,
+          [detail.jumlah, detail.id_items],
+        );
+      }
+    }
+
+    if (isLost) {
+      const totalCents = computeReplacementTotalCents(detailResult.rows);
+
+      if (totalCents === null) {
+        // Data lama tanpa snapshot: jangan memakai harga terbaru dan
+        // jangan mengarang nominal. Admin harus meninjau transaksi ini.
+        missingOriginalPriceItems = detailResult.rows
+          .filter((detail) => detail.original_price_at_rental === null)
+          .map((detail) => ({
+            id_items: detail.id_items,
+            nama_item: detail.nama_item,
+            jumlah: detail.jumlah,
+          }));
+      } else {
+        await client.query(
+          `INSERT INTO rental_replacements
+             (id_rental, total_amount, status, recorded_by)
+           VALUES ($1, $2, 'Pending', $3)
+           ON CONFLICT (id_rental) DO NOTHING`,
+          [id, formatCents(totalCents), adminId],
+        );
+      }
     }
 
     await client.query(
@@ -711,5 +878,69 @@ export async function returnRental(
   return {
     ...rental,
     perlu_penyesuaian_stok: input.kondisi_pengembalian !== "Baik",
+    penggantian_perlu_ditinjau: missingOriginalPriceItems.length > 0,
+    item_tanpa_harga_asli: missingOriginalPriceItems,
   };
+}
+
+/**
+ * Menandai kewajiban penggantian sebagai Completed.
+ * Hanya dipanggil dari endpoint admin. Bersifat idempotent: memanggil
+ * ulang untuk data yang sudah Completed mengembalikan data yang sama.
+ */
+export async function completeReplacement(
+  rentalId: number,
+  adminId: number,
+): Promise<RentalReplacement> {
+  const updated = await pool.query<ReplacementRow>(
+    `UPDATE rental_replacements
+     SET
+       status = 'Completed',
+       completed_by = $1,
+       completed_at = CURRENT_TIMESTAMP,
+       updated_at = CURRENT_TIMESTAMP
+     WHERE id_rental = $2
+       AND status <> 'Completed'
+     RETURNING
+       id_replacement,
+       id_rental,
+       total_amount,
+       status,
+       recorded_by,
+       completed_by,
+       completed_at,
+       created_at,
+       updated_at`,
+    [adminId, rentalId],
+  );
+
+  if (updated.rows[0]) {
+    return toReplacement(updated.rows[0]);
+  }
+
+  const existing = await pool.query<ReplacementRow>(
+    `SELECT
+       id_replacement,
+       id_rental,
+       total_amount,
+       status,
+       recorded_by,
+       completed_by,
+       completed_at,
+       created_at,
+       updated_at
+     FROM rental_replacements
+     WHERE id_rental = $1
+     LIMIT 1`,
+    [rentalId],
+  );
+
+  if (existing.rows[0]) {
+    return toReplacement(existing.rows[0]);
+  }
+
+  throw new AppError(
+    "Data penggantian tidak ditemukan untuk rental ini",
+    404,
+  );
 }

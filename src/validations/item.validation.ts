@@ -66,6 +66,17 @@ const descriptionField = z.preprocess(
     .optional(),
 );
 
+/**
+ * Harga asli bersifat opsional saat create/update agar form lama tetap
+ * berjalan. Barang dengan original_price NULL tidak dapat dipakai pada
+ * transaksi baru sampai Admin mengisinya (divalidasi saat rental dibuat).
+ * Jika field tidak dikirim saat update, nilai lama dipertahankan.
+ */
+const optionalMoneyField = z.preprocess(
+  emptyToUndefined,
+  moneyField.optional(),
+);
+
 export const createItemSchema = z.object({
   id_kategori: integerField.pipe(
     z.number().positive("Kategori wajib dipilih"),
@@ -84,6 +95,7 @@ export const createItemSchema = z.object({
   ),
   harga_sewa_harian: moneyField,
   denda_harian: moneyField,
+  original_price: optionalMoneyField,
 });
 
 export const updateItemSchema = createItemSchema;
