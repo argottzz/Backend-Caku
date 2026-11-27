@@ -6,7 +6,7 @@ Dibangun dengan **Node.js + Express 5 + TypeScript + PostgreSQL**.
 ## Fitur
 
 - Autentikasi JWT dengan dua role: `admin` dan `customer`
-- Kategori read-only
+- CRUD kategori (khusus Admin; kategori yang masih dipakai barang tidak dapat dihapus)
 - CRUD barang dengan upload gambar ke Cloudinary
 - Foto profil customer dan admin (upload/ganti/hapus)
 - Harga asli barang dan snapshot saat transaksi untuk penggantian barang hilang
@@ -59,6 +59,7 @@ Akun seed:
 | `npm run seed` | Seed kategori dan akun awal |
 | `npm test` | Unit test validasi dan perhitungan penggantian |
 | `npm run verify:features` | Verifikasi end-to-end DB + Cloudinary + HTTP (membuat lalu membersihkan data uji) |
+| `npm run verify:categories` | Verifikasi end-to-end CRUD kategori DB + HTTP (membuat lalu membersihkan data uji) |
 
 ## Struktur
 
@@ -83,6 +84,7 @@ src/
   utils/                  Uang, tanggal, file/Cloudinary, token, error
   scripts/seed.ts         Seed data awal
   scripts/verify-features.ts  Verifikasi end-to-end fitur baru
+  scripts/verify-categories.ts  Verifikasi end-to-end CRUD kategori
 ```
 
 ## Dokumentasi API

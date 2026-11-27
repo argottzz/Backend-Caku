@@ -119,7 +119,7 @@ Authorization: Bearer <token>
 
 Role:
 
-- `admin` — mengelola barang, memproses transaksi, memproses pengembalian, melihat laporan, memeriksa pengajuan admin.
+- `admin` — mengelola kategori, mengelola barang, memproses transaksi, memproses pengembalian, melihat laporan, memeriksa pengajuan admin.
 - `customer` — mengajukan penyewaan, melihat transaksi miliknya, membatalkan pengajuan `pending`, mengajukan perubahan role menjadi admin.
 
 Role dan identitas pengguna selalu dibaca ulang dari tabel `users` pada setiap request.
@@ -300,7 +300,7 @@ barang hilang.
 
 ## 5. Endpoint
 
-Ringkasan 27 endpoint:
+Ringkasan 30 endpoint:
 
 | No | Method | Endpoint | Akses |
 | -- | ------ | -------- | ----- |
@@ -331,6 +331,12 @@ Ringkasan 27 endpoint:
 | 25 | DELETE | `/api/users/me/profile-image` | Auth |
 | 26 | PATCH | `/api/users/me` | Auth |
 | 27 | PATCH | `/api/auth/change-password` | Auth |
+| 28 | POST | `/api/categories` | Admin |
+| 29 | PATCH/PUT | `/api/categories/:id` | Admin |
+| 30 | DELETE | `/api/categories/:id` | Admin |
+
+Endpoint kategori ditambahkan setelah implementasi CRUD, sehingga penomoran
+tabel tetap dipertahankan dan bagiannya dijelaskan pada 5.28–5.30.
 
 ---
 
@@ -388,7 +394,24 @@ database pada setiap request.
 
 ### 5.4 GET `/api/categories`
 
-Kategori bersifat read-only. Response `200` berisi daftar `{ id_kategori, nama }`.
+Daftar seluruh kategori, diurutkan berdasarkan `id_kategori`. Dapat dibaca
+semua pengguna yang sudah login (dipakai filter katalog dan form barang).
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Daftar kategori berhasil diambil",
+  "data": [
+    { "id_kategori": 1, "nama": "Tenda dan Shelter" }
+  ]
+}
+```
+
+Tidak ada pagination: jumlah kategori kecil dan seluruhnya dibutuhkan untuk
+pilihan pada form barang. Pengelolaan kategori (tambah/ubah/hapus) hanya untuk
+Admin — lihat 5.28–5.30. Tanpa token → `401`.
 
 ---
 
@@ -930,6 +953,111 @@ Body JSON:
 
 ---
 
+### 5.28 POST `/api/categories` (admin)
+
+Menambah kategori baru. Identitas Admin diambil dari JWT; body tidak memuat
+`id_kategori` maupun data pengguna.
+
+Body JSON:
+
+```json
+{ "nama": "Peralatan Memasak" }
+```
+
+Validasi:
+
+- `nama` wajib diisi, maksimal 100 karakter.
+- Spasi di awal/akhir dipangkas sebelum disimpan, sehingga `"  Tenda  "`
+  tersimpan sebagai `"Tenda"`.
+- Nilai yang hanya berisi spasi ditolak `400` (sama seperti nama kosong).
+
+Response `201`:
+
+```json
+{
+  "success": true,
+  "message": "Kategori berhasil ditambahkan",
+  "data": { "id_kategori": 6, "nama": "Peralatan Memasak" }
+}
+```
+
+Error:
+
+- `400` — nama kosong, hanya spasi, atau lebih dari 100 karakter.
+- `401` — token tidak ada / tidak valid.
+- `403` — role bukan `admin`.
+- `409` — nama kategori sudah digunakan (`UNIQUE (nama)`).
+
+---
+
+### 5.29 PATCH `/api/categories/:id` (admin) (juga menerima PUT)
+
+Mengubah nama kategori. Hanya field `nama` yang diterima.
+
+Body JSON:
+
+```json
+{ "nama": "Peralatan Masak" }
+```
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Kategori berhasil diperbarui",
+  "data": { "id_kategori": 6, "nama": "Peralatan Masak" }
+}
+```
+
+Error:
+
+- `400` — id bukan angka positif, nama kosong / hanya spasi / terlalu panjang.
+- `401` — token tidak ada / tidak valid.
+- `403` — role bukan `admin`.
+- `404` — kategori tidak ditemukan.
+- `409` — nama baru sudah dipakai kategori lain.
+
+Perubahan nama langsung terlihat pada `GET /api/categories` dan pada
+`nama_kategori` setiap barang yang memakai kategori tersebut, karena
+`GET /api/items` membaca nama dari tabel `categories` melalui JOIN.
+
+---
+
+### 5.30 DELETE `/api/categories/:id` (admin)
+
+Menghapus kategori yang tidak dipakai barang.
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Kategori berhasil dihapus",
+  "data": { "id_kategori": 6 }
+}
+```
+
+Aturan:
+
+- Kategori yang masih dipakai minimal satu barang **tidak dapat dihapus** →
+  `409`. Pesan menyebutkan jumlah barang yang memakainya.
+- `ON DELETE RESTRICT` pada `items.fk_items_categories` tetap dipertahankan;
+  pelanggaran foreign key dari database juga diterjemahkan menjadi `409`
+  dengan pesan yang sama.
+- Data barang tidak berubah sama sekali saat penghapusan ditolak.
+- Kategori tanpa barang dihapus permanen.
+
+Error:
+
+- `400` — id bukan angka positif.
+- `401` — token tidak ada / tidak valid.
+- `403` — role bukan `admin`.
+- `404` — kategori tidak ditemukan.
+- `409` — kategori masih digunakan oleh barang.
+
+---
+
 ## 6. Status Code
 
 | Kode | Kapan |
@@ -940,7 +1068,7 @@ Body JSON:
 | 401 | Token tidak ada / tidak valid / kadaluarsa |
 | 403 | Role tidak diizinkan / bukan pemilik |
 | 404 | Data tidak ditemukan |
-| 409 | Email duplikat, stok kurang, transisi status tidak sah, data masih dipakai, pengajuan masih/sudah diproses, barang tanpa harga asli, pengembalian bukan `ongoing` |
+| 409 | Email duplikat, nama kategori duplikat, kategori masih dipakai barang, stok kurang, transisi status tidak sah, data masih dipakai, pengajuan masih/sudah diproses, barang tanpa harga asli, pengembalian bukan `ongoing` |
 | 500 | Kesalahan server, Cloudinary belum dikonfigurasi, atau kegagalan database saat upload foto |
 
 ---
@@ -963,7 +1091,13 @@ ajukan → tolak → ajukan ulang → setujui sehingga akun seed tidak berubah r
 ```bash
 npm test                  # unit test validasi & perhitungan penggantian
 npm run verify:features   # end-to-end: DB + Cloudinary + HTTP
+npm run verify:categories # end-to-end CRUD kategori: DB + HTTP
 ```
+
+`verify:categories` membuat admin & customer sementara, menguji tambah, baca,
+ubah, dan hapus kategori (termasuk duplikat, id tidak ditemukan, akses
+Customer, dan kategori yang masih dipakai barang), lalu menghapus data uji.
+Struktur database tidak diubah.
 
 `verify:features` membuat user/item/rental sementara, menguji unggah/hapus foto
 profil, snapshot harga asli, pengembalian `Hilang`/`Baik`, data lama tanpa

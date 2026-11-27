@@ -9,7 +9,8 @@
     "start": "npx tsx src/server.ts",
     "typecheck": "npx tsc --noEmit",
     "seed": "npx tsx src/scripts/seed.ts",
-    "test": "npx tsx --test tests/replacement.test.ts tests/item-validation.test.ts",
+    "test": "npx tsx --test tests/replacement.test.ts tests/item-validation.test.ts tests/category-validation.test.ts",
+    "verify:categories": "npx tsx src/scripts/verify-categories.ts",
     "verify:features": "npx tsx src/scripts/verify-features.ts"
   },
   "keywords": [],
