@@ -300,7 +300,7 @@ barang hilang.
 
 ## 5. Endpoint
 
-Ringkasan 30 endpoint:
+Ringkasan 31 endpoint:
 
 | No | Method | Endpoint | Akses |
 | -- | ------ | -------- | ----- |
@@ -334,6 +334,7 @@ Ringkasan 30 endpoint:
 | 28 | POST | `/api/categories` | Admin |
 | 29 | PATCH/PUT | `/api/categories/:id` | Admin |
 | 30 | DELETE | `/api/categories/:id` | Admin |
+| 31 | POST | `/api/rentals/pay-qr` | Auth |
 
 Endpoint kategori ditambahkan setelah implementasi CRUD, sehingga penomoran
 tabel tetap dipertahankan dan bagiannya dijelaskan pada 5.28–5.30.
@@ -517,6 +518,9 @@ Response `200` + `pagination`. Ringkasan tiap rental:
   "bukti_transfer_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/bukti-transfer/<uuid>.png",
   "identity_image": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/identity/<uuid>.png",
   "identity_image_url": "https://res.cloudinary.com/<cloud>/image/upload/v123/caku/identity/<uuid>.png",
+  "metode_pembayaran": "transfer",
+  "qr_code_payload": null,
+  "paid_at": null,
   "status": "pending",
   "kondisi_pengembalian": null,
   "catatan_pengembalian": null,
@@ -603,6 +607,9 @@ Aturan:
   client diabaikan.
 - Checkout membutuhkan dua file multipart: `bukti_transfer` (bukti pembayaran)
   dan `identity_image` (foto KTP sebagai jaminan). Keduanya wajib.
+- Field `metode_pembayaran` (`transfer` atau `qr_code`, default `transfer`).
+  Jika `transfer`, `bukti_transfer` wajib. Jika `qr_code`, `bukti_transfer`
+  tidak diperlukan dan sistem membuat `qr_code_payload` untuk discan.
 
 Response `201` berisi detail rental, file bukti, dan foto KTP.
 
@@ -668,6 +675,26 @@ Aturan:
 Response `200` berisi detail rental `completed` + `perlu_penyesuaian_stok` +
 `penggantian_perlu_ditinjau` + `item_tanpa_harga_asli`. Objek `penggantian`
 mengikuti format pada 5.11.
+
+---
+
+### 5.16 POST `/api/rentals/pay-qr` (auth)
+
+Konfirmasi pembayaran dengan memindai QR Code transaksi.
+
+Body JSON:
+
+```json
+{ "qr_code_payload": "CAKU-PAY-12-1732758400" }
+```
+
+Alur:
+- Cari rental berdasarkan `qr_code_payload`.
+- Jika tidak ditemukan → `404`.
+- Jika status bukan `awaiting_payment` atau sudah `paid_at` → `400`.
+- Update `status = pending`, `paid_at = NOW()`.
+
+Response `200` berisi detail rental terbaru (status `pending`, `paid_at`, total).
 
 ---
 

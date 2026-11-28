@@ -35,6 +35,9 @@ interface RentalRow {
   tanggal_kembali_aktual: string | null;
   bukti_transfer: string | null;
   identity_image: string | null;
+  metode_pembayaran: string;
+  qr_code_payload: string | null;
+  paid_at: Date | null;
   status: RentalStatus;
   kondisi_pengembalian: ReturnCondition | null;
   catatan_pengembalian: string | null;
@@ -114,6 +117,9 @@ export interface RentalSummary {
   bukti_transfer_url: string | null;
   identity_image: string | null;
   identity_image_url: string | null;
+  metode_pembayaran: string;
+  qr_code_payload: string | null;
+  paid_at: Date | null;
   status: RentalStatus;
   kondisi_pengembalian: ReturnCondition | null;
   catatan_pengembalian: string | null;
@@ -165,6 +171,9 @@ const RENTAL_LIST_SELECT = `
     r.tanggal_kembali_aktual,
     r.bukti_transfer,
     r.identity_image,
+    r.metode_pembayaran,
+    r.qr_code_payload,
+    r.paid_at,
     r.status,
     r.kondisi_pengembalian,
     r.catatan_pengembalian,
@@ -254,6 +263,9 @@ function toSummary(row: RentalListRow): RentalSummary {
     bukti_transfer_url: buildFileUrl(row.bukti_transfer),
     identity_image: row.identity_image,
     identity_image_url: buildFileUrl(row.identity_image),
+    metode_pembayaran: row.metode_pembayaran,
+    qr_code_payload: row.qr_code_payload,
+    paid_at: row.paid_at,
     status: row.status,
     kondisi_pengembalian: row.kondisi_pengembalian,
     catatan_pengembalian: row.catatan_pengembalian,
@@ -313,6 +325,9 @@ function toDetail(
     bukti_transfer_url: buildFileUrl(row.bukti_transfer),
     identity_image: row.identity_image,
     identity_image_url: buildFileUrl(row.identity_image),
+    metode_pembayaran: row.metode_pembayaran,
+    qr_code_payload: row.qr_code_payload,
+    paid_at: row.paid_at,
     status: row.status,
     kondisi_pengembalian: row.kondisi_pengembalian,
     catatan_pengembalian: row.catatan_pengembalian,
@@ -417,6 +432,9 @@ export async function findRentalById(
        r.tanggal_kembali_aktual,
        r.bukti_transfer,
        r.identity_image,
+       r.metode_pembayaran,
+       r.qr_code_payload,
+       r.paid_at,
        r.status,
        r.kondisi_pengembalian,
        r.catatan_pengembalian,
@@ -496,7 +514,8 @@ export async function getRentalForUser(
 export async function createRental(
   userId: number,
   input: CreateRentalInput,
-  buktiTransfer: string,
+  metodePembayaran: string,
+  buktiTransfer: string | null,
   identityImage: string,
   identityImagePublicId: string,
 ): Promise<RentalDetail> {
@@ -543,22 +562,35 @@ export async function createRental(
       }
     }
 
+    const isQr = metodePembayaran === "qr_code";
+    const statusSql = isQr ? "awaiting_payment" : "pending";
+
     const rentalResult = await client.query<{ id_rental: number }>(
       `INSERT INTO rentals
-         (id_user, tanggal_mulai, tanggal_selesai, bukti_transfer, identity_image, identity_image_public_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending'::rental_status)
+         (id_user, tanggal_mulai, tanggal_selesai, bukti_transfer, identity_image, identity_image_public_id, metode_pembayaran, qr_code_payload, paid_at, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, $8::rental_status)
        RETURNING id_rental`,
       [
         userId,
         input.tanggal_mulai,
         input.tanggal_selesai,
-        buktiTransfer,
+        isQr ? null : buktiTransfer,
         identityImage,
         identityImagePublicId,
+        metodePembayaran,
+        statusSql,
       ],
     );
 
     const newRentalId = rentalResult.rows[0].id_rental;
+
+    if (isQr) {
+      const payload = `CAKU-PAY-${newRentalId}-${Date.now()}`;
+      await client.query(
+        `UPDATE rentals SET qr_code_payload = $1 WHERE id_rental = $2`,
+        [payload, newRentalId],
+      );
+    }
 
     for (const item of input.items) {
       const record = itemsById.get(item.id_items);
@@ -965,4 +997,43 @@ export async function completeReplacement(
     "Data penggantian tidak ditemukan untuk rental ini",
     404,
   );
+}
+
+export async function payQr(qrCodePayload: string): Promise<RentalDetail> {
+  const { rows } = await pool.query<{
+    id_rental: number;
+    status: RentalStatus;
+    paid_at: Date | null;
+  }>(
+    `SELECT id_rental, status, paid_at
+     FROM rentals
+     WHERE qr_code_payload = $1
+     LIMIT 1`,
+    [qrCodePayload],
+  );
+
+  const rental = rows[0];
+
+  if (!rental) {
+    throw new AppError("Kode QR tidak valid", 404);
+  }
+
+  if (rental.status !== "awaiting_payment" || rental.paid_at !== null) {
+    throw new AppError("Pesanan ini sudah dibayar atau tidak berlaku", 400);
+  }
+
+  await pool.query(
+    `UPDATE rentals
+     SET status = 'pending'::rental_status, paid_at = NOW()
+     WHERE id_rental = $1`,
+    [rental.id_rental],
+  );
+
+  const updated = await findRentalById(rental.id_rental);
+
+  if (!updated) {
+    throw new Error("Gagal mengambil rental yang diperbarui");
+  }
+
+  return updated;
 }
