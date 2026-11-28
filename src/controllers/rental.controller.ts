@@ -5,6 +5,7 @@ import {
   deleteRental,
   findRentals,
   getRentalForUser,
+  payQr,
   returnRental,
   updateRentalStatus,
 } from "../services/rental.service.ts";
@@ -19,6 +20,7 @@ import { parseId } from "../utils/parseId.ts";
 import { updateReplacementSchema } from "../validations/replacement.validation.ts";
 import {
   createRentalSchema,
+  payQrSchema,
   rentalQuerySchema,
   updateRentalStatusSchema,
 } from "../validations/rental.validation.ts";
@@ -102,6 +104,7 @@ class RentalController {
         tanggal_mulai: req.body?.tanggal_mulai,
         tanggal_selesai: req.body?.tanggal_selesai,
         items,
+        metode_pembayaran: req.body?.metode_pembayaran,
       });
 
       if (!validation.success) {
@@ -120,13 +123,6 @@ class RentalController {
       const transferFile = uploadedFiles.bukti_transfer?.[0];
       const identityFile = uploadedFiles.identity_image?.[0];
 
-      if (!transferFile) {
-        return res.status(400).json({
-          success: false,
-          message: "Bukti transfer wajib diunggah",
-        });
-      }
-
       if (!identityFile) {
         return res.status(400).json({
           success: false,
@@ -134,12 +130,25 @@ class RentalController {
         });
       }
 
-      savedProof = await saveTransferProof(transferFile);
+      const metodePembayaran = validation.data.metode_pembayaran ?? "transfer";
+
+      if (metodePembayaran === "transfer" && !transferFile) {
+        return res.status(400).json({
+          success: false,
+          message: "Bukti transfer wajib diunggah",
+        });
+      }
+
+      if (transferFile) {
+        savedProof = await saveTransferProof(transferFile);
+      }
+
       savedIdentity = await saveIdentityImage(identityFile);
 
       const rental = await createRental(
         (req as AuthenticatedRequest).user.id,
         validation.data,
+        metodePembayaran,
         savedProof,
         savedIdentity.url,
         savedIdentity.publicId,
@@ -269,6 +278,30 @@ class RentalController {
       return res.json({
         success: true,
         message,
+        data: rental,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  payQr = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const validation = payQrSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Data tidak valid",
+          error: validation.error.issues,
+        });
+      }
+
+      const rental = await payQr(validation.data.qr_code_payload);
+
+      return res.json({
+        success: true,
+        message: "Pembayaran berhasil dikonfirmasi",
         data: rental,
       });
     } catch (error) {

@@ -62,6 +62,10 @@ export const createRentalSchema = z
     tanggal_mulai: dateField,
     tanggal_selesai: dateField,
     items: itemsField,
+    metode_pembayaran: z
+      .enum(["transfer", "qr_code"], "Metode pembayaran tidak valid")
+      .optional()
+      .default("transfer"),
   })
   .superRefine((data, context) => {
     if (data.tanggal_selesai < data.tanggal_mulai) {
@@ -86,7 +90,7 @@ export const rentalQuerySchema = z.object({
     emptyToUndefined,
     z
       .enum(
-        ["pending", "approved", "ongoing", "completed", "rejected"],
+        ["pending", "approved", "ongoing", "completed", "rejected", "awaiting_payment"],
         "Status tidak valid",
       )
       .optional(),
@@ -117,8 +121,16 @@ export const updateRentalStatusSchema = z.object({
   ),
 });
 
+export const payQrSchema = z.object({
+  qr_code_payload: z
+    .string("Kode QR wajib diisi")
+    .trim()
+    .min(1, "Kode QR wajib diisi"),
+});
+
 export type CreateRentalInput = z.infer<typeof createRentalSchema>;
 export type RentalQueryInput = z.infer<typeof rentalQuerySchema>;
 export type UpdateRentalStatusInput = z.infer<
   typeof updateRentalStatusSchema
 >;
+export type PayQrInput = z.infer<typeof payQrSchema>;

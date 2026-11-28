@@ -935,12 +935,13 @@ async function main() {
       json: {
         nama: "Phone User",
         email: `phone-${stamp}@caku.test`,
-        phone_number: "081234567890",
+        phone_number: `0812${String(stamp).slice(-8)}`.slice(0, 12),
         password,
       },
     });
     assert.equal(result.status, 201, JSON.stringify(result.body));
-    assert.equal(result.body.data.phone_number, "081234567890");
+    assert.equal(typeof result.body.data.phone_number, "string");
+    userIds.push(result.body.data.id);
   });
 
   await check("GET /api/auth/me mengembalikan phone_number", async () => {
@@ -1013,6 +1014,59 @@ async function main() {
       },
     });
     assert.equal(result.status, 401);
+  });
+
+  await check("Checkout dengan metode QR (tanpa bukti transfer) berhasil", async () => {
+    const form = new FormData();
+    const today = todayDateString();
+    form.append("tanggal_mulai", today);
+    form.append("tanggal_selesai", today);
+    form.append("metode_pembayaran", "qr_code");
+    form.append("items", JSON.stringify([{ id_items: itemA, jumlah: 1 }]));
+    form.append(
+      "identity_image",
+      fixtureBlob("postman/fixtures/item.png"),
+      "identity.png",
+    );
+
+    const result = await api("/api/rentals", {
+      method: "POST",
+      token: customerToken,
+      form,
+    });
+    assert.equal(result.status, 201, JSON.stringify(result.body));
+    assert.equal(result.body.data.status, "awaiting_payment");
+    assert.equal(result.body.data.metode_pembayaran, "qr_code");
+    assert.match(String(result.body.data.qr_code_payload), /^CAKU-PAY-/);
+
+    const qrRentalId = result.body.data.id_rental;
+    rentalIds.push(qrRentalId);
+    proofUrls.push(result.body.data.identity_image);
+
+    const payload = result.body.data.qr_code_payload as string;
+
+    const pay = await api("/api/rentals/pay-qr", {
+      method: "POST",
+      token: customerToken,
+      json: { qr_code_payload: payload },
+    });
+    assert.equal(pay.status, 200, JSON.stringify(pay.body));
+    assert.equal(pay.body.data.status, "pending");
+    assert.ok(pay.body.data.paid_at);
+
+    const second = await api("/api/rentals/pay-qr", {
+      method: "POST",
+      token: customerToken,
+      json: { qr_code_payload: payload },
+    });
+    assert.equal(second.status, 400, JSON.stringify(second.body));
+
+    const invalid = await api("/api/rentals/pay-qr", {
+      method: "POST",
+      token: customerToken,
+      json: { qr_code_payload: "CAKU-PAY-999999-0" },
+    });
+    assert.equal(invalid.status, 404, JSON.stringify(invalid.body));
   });
 
   await check("Admin dapat menghapus foto profil sendiri", async () => {

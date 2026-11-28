@@ -3,7 +3,8 @@ export type RentalStatus =
   | "approved"
   | "ongoing"
   | "completed"
-  | "rejected";
+  | "rejected"
+  | "awaiting_payment";
 
 export type ReturnCondition = "Baik" | "Rusak" | "Hilang";
 

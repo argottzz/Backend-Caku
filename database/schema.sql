@@ -12,7 +12,8 @@ CREATE TYPE rental_status AS ENUM (
     'approved',
     'ongoing',
     'completed',
-    'rejected'
+    'rejected',
+    'awaiting_payment'
 );
 
 -- KONDISI PENGEMBALIAN
@@ -141,6 +142,9 @@ CREATE TABLE rentals (
     bukti_transfer VARCHAR(255),
     identity_image TEXT,
     identity_image_public_id VARCHAR(255),
+    metode_pembayaran VARCHAR(20) NOT NULL DEFAULT 'transfer',
+    qr_code_payload VARCHAR(100),
+    paid_at TIMESTAMP,
     status rental_status DEFAULT 'pending' NOT NULL,
     kondisi_pengembalian return_condition,
     catatan_pengembalian TEXT,

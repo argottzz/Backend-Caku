@@ -17,6 +17,12 @@ router.post(
   rentalController.create,
 );
 
+router.post(
+  "/pay-qr",
+  verifyToken,
+  rentalController.payQr,
+);
+
 router.delete(
   "/:id",
   verifyToken,
